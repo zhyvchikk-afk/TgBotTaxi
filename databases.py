@@ -80,9 +80,10 @@ async def init_db_prices():
         )
         await db.commit()
 
-
+# --- Отримання цін
 async def get_prices():
     async with aiosqlite.connect(DB_PRICES) as db:
         cursor = await db.execute("SELECT destination, one_way, two_way FROM prices")
         result = await cursor.fetchall()
         return result
+    

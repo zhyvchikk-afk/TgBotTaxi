@@ -18,6 +18,7 @@ from button import (
     register_button, 
     inline_way_button,
     location_button,
+    to_leave_line,
 )
 from databases import (
     user_exists,
@@ -61,7 +62,7 @@ def split_text(text, limit=4000):
 
 driversWork = []
 current_driver_index = 0
-driversID = [MY_COMPUTER, KRISTINA, EUGENE, KOSTYA_LIFE]
+driversID = [MY_COMPUTER, KRISTINA, EUGENE]
 delay = random.randint(3, 8)
 
 
@@ -136,7 +137,6 @@ async def get_next_driver():
 # --- Замовлення авто, тарифи, про нас
 @router.message(F.text == "Замовити таксі 🚕")
 async def order(message: Message):
-    print(driversWork)
     await message.answer("Введіть адресу, або оберіть пункт нижче: ",
                          reply_markup=location_button())
 
@@ -274,6 +274,54 @@ async def price(message: Message):
         ДОСТАВИМО ВАС У БУДЬ-ЯКУ ТОЧКУ УКРАЇНИ!</b> 🫶🏻❤️
                         """, parse_mode="HTML")
 
+# --- Функція виходу водія на лінію
+@router.message(F.text == "Працювати з нами🪙")
+async def go_work(message: Message):
+    user_id = message.from_user.id
+
+    if user_id in driversWork:
+        await message.answer("Ви вже працюєте🤑\nЧекайте на змовлення", reply_markup=to_leave_line())
+
+    if user_id not in driversID:
+        await message.answer(f"Вибачте, на жаль, ви не є водієм нашої компанії\n" \
+        f"Якщо хочете стати водієм - пишіть @{ADMIN_USERNAME}")
+        return
+    
+    if user_id not in driversWork:
+        driversWork.append(user_id)
+        await message.answer("Вітаємо, ви на лінії✅\nСкоро замовлення!🚕", 
+                             reply_markup=to_leave_line())
+        return
+
+    
+# --- Функція зняття з лінії
+@router.message(F.text == "Зійти з лінії")
+async def go_home(message: Message):
+    user_id = message.from_user.id
+    
+    if user_id not in driversID:
+        return
+    
+    if user_id not in driversWork:
+        await message.answer("Ви і так не на лінії!🚫", reply_markup=get_order_some_keyboard())
+        return
+    
+    if user_id in driversWork:
+        driversWork.remove(user_id)
+        await message.answer("Гарно відпочити!😌", reply_markup=get_order_some_keyboard())
+
+
+# --- Функція зі зміни ролі на ВОДІЯ
+async def change_role_driver(telegram_id: int):
+    async with aiosqlite.connect(DB_USERS) as db:
+        await db.execute("UPDATE users SET role = 'driver' WHERE telegram_id = ?", (telegram_id,))
+        await db.commit()
+    
+# --- Функція зі зміни ролі на ПАСАЖИРА
+async def change_role_passenger(telegram_id: int):
+    async with aiosqlite.connect(DB_USERS) as db:
+        await db.execute("UPDATE users SET role = 'passenger' WHERE telegram_id = ?", (telegram_id,))
+        await db.commit()
 
 
 
@@ -296,53 +344,6 @@ async def users(message: Message):
     await message.answer(text)
 
 
-# --- Тарифи
-@router.message(Command("prices"))
-async def prices(message: Message):
-    price = await get_prices()
 
-    if not price:
-        await message.answer("Ціни відсутні")
-        return
-
-    text = ""
-    for destination, one_way, two_way in price:
-        text += f"Куди: <b>{destination}</b>\nВ один бік: <b>{one_way}</b>\nВ дві сторони: <b>{two_way}</b>\n\n"
-
-    await message.answer(text, parse_mode="HTML")
-
-# --- Функція виходу водія на лінію
-@router.message(Command("working"))
-async def go_work(message: Message):
-    user_id = message.from_user.id
-
-    if user_id in driversWork:
-        await message.answer("Ви вже працюєте🤑\nЧекайте на змовлення")
-
-    if user_id not in driversID:
-        await message.answer(f"Вибачте, на жаль, ви не є водієм нашої компанії\n" \
-        f"Якщо хочете стати водієм - пишіть @{ADMIN_USERNAME}")
-        return
-    
-    if user_id not in driversWork:
-        driversWork.append(user_id)
-        await message.answer("Вітаємо, ви на лінії✅\nСкоро замовлення!🚕")
-        return
-    
-# --- Функція зняття з лінії
-@router.message(Command("home"))
-async def go_home(message: Message):
-    user_id = message.from_user.id
-    
-    if user_id not in driversID:
-        return
-    
-    if user_id not in driversWork:
-        await message.answer("Ви і так не на лінії!🚫")
-        return
-    
-    if user_id in driversWork:
-        driversWork.remove(user_id)
-        await message.answer("Гарно відпочити!😌")
 
 

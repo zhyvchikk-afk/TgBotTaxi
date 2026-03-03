@@ -8,8 +8,8 @@ from aiogram.types import (
 def get_order_some_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Замовити таксі 🚕")],
-            [KeyboardButton(text="Тарифи 📋"), KeyboardButton(text="Про нас ✌🏻")]
+            [KeyboardButton(text="Замовити таксі 🚕"), KeyboardButton(text="Тарифи 📋")],
+            [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")]
         ],
         resize_keyboard=True
     )
@@ -42,5 +42,14 @@ def inline_way_button():
             [InlineKeyboardButton(text="Передмістя", callback_data="suburbs")],
             [InlineKeyboardButton(text="Більше 30км", callback_data="intercity")],
         ]
+    )
+    return keyboard
+
+def to_leave_line():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard = [
+            [KeyboardButton(text="Зійти з лінії")]
+        ],
+        resize_keyboard=True
     )
     return keyboard
