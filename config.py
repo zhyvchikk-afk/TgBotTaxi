@@ -5,6 +5,7 @@ load_dotenv()
 
 BOT_TOKEN = getenv("BOT_TOKEN")
 ADMIN_ID = int(getenv("ADMIN_ID"))
+ADMIN_USERNAME = getenv("ADMIN_USERNAME")
 
 DB_USERS = getenv("DB_USERS")
 DB_PRICES = getenv("DB_PRICES")

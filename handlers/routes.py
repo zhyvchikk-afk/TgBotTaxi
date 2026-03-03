@@ -4,7 +4,7 @@ import random
 from asyncio import sleep
 from config import DB_USERS, DB_PRICES
 from config import MY_COMPUTER, KRISTINA, EUGENE, KOSTYA_LIFE
-from config import ADMIN_ID
+from config import ADMIN_ID, ADMIN_USERNAME
 from aiogram.types import (
     Message,
     FSInputFile,
@@ -320,8 +320,8 @@ async def go_work(message: Message):
         await message.answer("Ви вже працюєте🤑\nЧекайте на змовлення")
 
     if user_id not in driversID:
-        await message.answer("Вибачте, на жаль, ви не є водієм нашої компанії\n" \
-        "Якщо хочете стати водієм - пишіть @zhyvchikk")
+        await message.answer(f"Вибачте, на жаль, ви не є водієм нашої компанії\n" \
+        f"Якщо хочете стати водієм - пишіть @{ADMIN_USERNAME}")
         return
     
     if user_id not in driversWork:

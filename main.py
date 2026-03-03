@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from handlers.routes import router
 from config import BOT_TOKEN
 import aiosqlite
-from data_bases import init_db, init_db_prices
+from databases import init_db, init_db_prices
 
 
 TOKEN = BOT_TOKEN
