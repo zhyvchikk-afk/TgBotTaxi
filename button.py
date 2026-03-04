@@ -38,9 +38,19 @@ def location_button():
 def inline_way_button():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard = [
+            [InlineKeyboardButton(text="Місто", callback_data="city")],
             [InlineKeyboardButton(text="Костянтинівка", callback_data="kostyantynivka")],
             [InlineKeyboardButton(text="Передмістя", callback_data="suburbs")],
             [InlineKeyboardButton(text="Більше 30км", callback_data="intercity")],
+        ]
+    )
+    return keyboard
+
+def accept_reject_button(passenger_id: int):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Прийняти ✅", callback_data=f"accept_{passenger_id}")],
+            [InlineKeyboardButton(text="Відхилити ❌", callback_data=f"reject_{passenger_id}")]
         ]
     )
     return keyboard

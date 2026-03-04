@@ -1,3 +1,11 @@
+city = [
+    ("city", "По місту", "100", "---"),
+    ("city", "Кожна зупинка", "+50", "---"),
+    ("city", "Підібрати/висадити пасажира", "0", "---"),
+    ("city", "Очікування до 10хв", "0", "---"),
+    ("city", "Очікування кожні 10хв", "+50", "---"),
+]
+
 kostyantynivka = [
     ("kostyantynivka", "93 Стрелкової", "130-150", "---"),
     ("kostyantynivka", "96 Танкової", "130-150", "---"),
@@ -123,4 +131,4 @@ suburbs = [
     ("suburbs", "Шахта", "120", "---")
 ]
 
-all_data = kostyantynivka + suburbs + intercity
+all_data = kostyantynivka + suburbs + intercity + city

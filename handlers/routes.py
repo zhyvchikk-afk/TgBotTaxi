@@ -19,6 +19,7 @@ from button import (
     inline_way_button,
     location_button,
     to_leave_line,
+    accept_reject_button,
 )
 from databases import (
     user_exists,
@@ -158,14 +159,14 @@ async def location(message: Message, state: FSMContext):
         return
     
     await message.bot.send_message(chat_id=next_driver, text=f"🚕 <b>Нове замовлення:</b>\n\n"
-                                     f"👤 <b>Пасажир: {message.from_user.full_name}</b>"
-                                     f"👤 <b>Username: @{message.from_user.username}</b>"
-                                     f"📍 <b>Локація:</b>", parse_mode="HTML"
+                                     f"👤 Пасажир: <b>{message.from_user.full_name}</b>\n"
+                                     f"👤 Username: <b>@{message.from_user.username}</b>\n"
+                                     f"📍 Локація:", parse_mode="HTML"
         )
     await message.bot.send_location(chat_id=next_driver, latitude=shyryna, longitude=dovzhyna)
-    await sleep(delay)
-    await message.answer("Водій прийняв ваше замовлення!\nОчікуйте на авто🚕")
-
+    await message.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
+                                   reply_markup=accept_reject_button(message.from_user.id))
+    
 
 # --- Відправка адреси
 @router.message(F.text == "Надіслати збережену адресу 🏠")
@@ -182,14 +183,58 @@ async def address(message: Message):
         await message.answer(f"Вашу адресу <b>{user_address}</b> надіслано водію!", parse_mode="HTML")
         await message.bot.send_message(
             chat_id=next_driver, text=f"🚕 <b>Нове замовлення:</b>\n\n"
-                                     f"👤 <b>Пасажир: {message.from_user.full_name}</b>"
-                                     f"👤 <b>Username: @{message.from_user.username}</b>"
-                                     f"📍 <b>Адреса: {user_address}</b>", parse_mode="HTML"
+                                     f"👤 Пасажир: <b>{message.from_user.full_name}</b>\n"
+                                     f"👤 Username: <b>@{message.from_user.username}</b>\n"
+                                     f"📍 Адреса: <b>{user_address}</b>\n", parse_mode="HTML"
         )
-        await sleep(delay)
-        await message.answer("Водій прийняв ваше замовлення!\nОчікуйте на авто🚕")
+        await message.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
+                                   reply_markup=accept_reject_button(message.from_user.id))
+    
     else:
         await message.answer("❌ Вашої адреси в базі немає. Пройдіть реєстрацію ще раз.")
+
+
+# --- Прийняття замовлення водієм
+@router.callback_query(F.data.startswith("accept_"))
+async def accept_order(callback: CallbackQuery):
+    passenger_id = int(callback.data.split("_")[1])
+
+    # --- Повідомлення пасажиру
+    await callback.bot.send_message(chat_id=passenger_id,
+                                    text="🚕 Водій прийняв ваше замовлення!")
+    
+    # --- Повідомлення водію
+    await callback.message.edit_text("✅ Ви прийняли замовлення")
+    await callback.answer()
+
+
+# --- Відхилення замовлення водієм
+@router.callback_query(F.data.startswith("reject_"))
+async def reject_order(callback: CallbackQuery):
+    passenger_id = int(callback.data.split("_")[1])
+
+    await callback.bot.send_message(chat_id=passenger_id,
+            text="❌ Водій відхилив замовлення. Шукаємо наступного водія")
+    
+    await callback.message.edit_text("❌ Ви відхилили замовлення")
+
+    await callback.answer()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @router.message(F.text == "Повернутися до головного меню 🔙")
 async def cancel(message: Message):
@@ -200,6 +245,26 @@ async def cancel(message: Message):
 @router.message(F.text == "Тарифи 📋")
 async def price(message: Message):
     await message.answer("Оберіть який напрямок вас цікавить 📋", reply_markup=inline_way_button())
+
+@router.callback_query(F.data == "city")
+async def show_city_price(callback: CallbackQuery):
+    async with aiosqlite.connect(DB_PRICES) as db:
+        async with db.execute("SELECT destination, one_way FROM prices WHERE category = 'city'") as cursor:
+            result = await cursor.fetchall()
+    
+    if not result:
+        await callback.answer("Дані не знайдено", show_alert=True)
+        return
+    
+    text = f"<b>Тарифи по місту: </b>\n\n"
+    for dest, price1 in result:
+        text += f"▪️{dest}: <b>{price1} грн</b>\n"
+
+    for chunk in split_text(text, 4000):
+        await callback.message.answer(chunk, parse_mode="HTML",
+                                    reply_markup=inline_way_button())
+    
+    await callback.answer()
 
 @router.callback_query(F.data == "kostyantynivka")
 async def show_kostyantynivka_price(callback: CallbackQuery):
