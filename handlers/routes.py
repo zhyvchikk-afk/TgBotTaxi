@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 import random
 from asyncio import sleep
-from config import DB_USERS, DB_PRICES
+from config import DB_USERS, DB_PRICES, DB_ORDERS
 from config import MY_COMPUTER, KRISTINA, EUGENE, KOSTYA_LIFE
 from config import ADMIN_ID, ADMIN_USERNAME
 from aiogram.types import (
@@ -29,6 +29,7 @@ from databases import (
     get_prices,
     get_user_address,
 )
+import json
 
 # Клас з додатковими полями для реєстрації
 from aiogram.fsm.state import State, StatesGroup
@@ -62,9 +63,24 @@ def split_text(text, limit=4000):
     return chunks
 
 driversWork = []
-current_driver_index = 0
-driversID = [MY_COMPUTER, KRISTINA, EUGENE]
-delay = random.randint(3, 8)
+driver_index = 0
+driversID = [MY_COMPUTER, KRISTINA, EUGENE, KOSTYA_LIFE]
+active_order = {}
+
+# --- Функція отримання данних користувача з БД
+async def get_passenger_info(passenger_id: int) -> dict:
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT full_name, username FROM users WHERE id = ?",
+            (passenger_id,)
+        )
+        row = await cursor.fetchone()
+
+    if row:
+        full_name, username = row
+        return {"full_name": full_name, "username": username}
+    else:
+        return {"full_name": "Невідомо", "username": "Невідомо"}
 
 
 
@@ -120,19 +136,30 @@ async def get_address(message: Message, state: FSMContext):
     await state.clear()
     
 # --- Функція з визначення наступного водія
-async def get_next_driver():
-    global current_driver_index
+async def get_next_driver(exclude: list[int] | None = None):
+    global driver_index
+
+    if exclude is None:
+        exclude = []
 
     if not driversWork:
         return None
     
-    driver = driversWork[current_driver_index]
-    current_driver_index += 1
+    checked = 0
 
-    if current_driver_index >= len(driversWork):
-        current_driver_index = 0
-    
-    return driver
+    while checked < len(driversWork):
+        driver = driversWork[driver_index]
+
+        driver_index += 1
+        if driver_index >= len(driversWork):
+            driver_index = 0
+
+        if driver not in exclude:
+            return driver
+        
+        checked += 1
+
+    return None
 
 
 # --- Замовлення авто, тарифи, про нас
@@ -149,32 +176,55 @@ async def location(message: Message, state: FSMContext):
     dovzhyna = message.location.longitude
 
     await state.update_data(latitude=shyryna, longitude=dovzhyna)
-
     await message.answer("Локацію отримано ✅\nШукаємо водія...")
 
-    next_driver = await get_next_driver()
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        cursor = await db.execute(
+            "INSERT INTO orders (passenger_id, status, latitude, longitude, rejected_drivers)" \
+            "VALUES (?, ?, ?, ?, ?)",
+            (message.from_user.id, "pending", shyryna, dovzhyna, json.dumps([]))
+        )
+        await db.commit()
+        order_id = cursor.lastrowid
 
+    next_driver = await get_next_driver(exclude=[])
     if not next_driver:
         await message.answer("Вибачте, наразі жодного водія немає❌")
         return
     
-    await message.bot.send_message(chat_id=next_driver, text=f"🚕 <b>Нове замовлення:</b>\n\n"
+    await message.bot.send_message(chat_id=next_driver, text=f"🚕 <b>Нове замовлення: #{order_id}</b>\n\n"
                                      f"👤 Пасажир: <b>{message.from_user.full_name}</b>\n"
                                      f"👤 Username: <b>@{message.from_user.username}</b>\n"
                                      f"📍 Локація:", parse_mode="HTML"
         )
     await message.bot.send_location(chat_id=next_driver, latitude=shyryna, longitude=dovzhyna)
-    await message.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
-                                   reply_markup=accept_reject_button(message.from_user.id))
+    await message.bot.send_message(chat_id=next_driver, text=f"<b>Прийняти замовлення #{order_id}?</b>🏎", parse_mode="HTML",
+                                   reply_markup=accept_reject_button(order_id))
     
 
 # --- Відправка адреси
 @router.message(F.text == "Надіслати збережену адресу 🏠")
 async def address(message: Message):
     user_address = await get_user_address(message.from_user.id)
+    await message.answer("Адресу отримано ✅\nШукаємо водія...")
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT address FROM users WHERE telegram_id = ?",
+            (message.from_user.id,)
+        )
+        await db.commit()
+        user_address = cursor.fetchone()
 
-    next_driver = await get_next_driver()
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        cursor = await db.execute(
+            "INSERT INTO orders (passenger_id, status, address, rejected_drivers)" \
+            "VALUES (?, ?, ?, ?)",
+            (message.from_user.id, "pending", user_address, json.dumps([]))
+        )
+        await db.commit()
+        order_id = cursor.lastrowid
 
+    next_driver = await get_next_driver(exclude=[])
     if not next_driver:
         await message.answer("Вибачте, наразі жодного водія немає❌")
         return
@@ -188,7 +238,7 @@ async def address(message: Message):
                                      f"📍 Адреса: <b>{user_address}</b>\n", parse_mode="HTML"
         )
         await message.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
-                                   reply_markup=accept_reject_button(message.from_user.id))
+                                   reply_markup=accept_reject_button(order_id))
     
     else:
         await message.answer("❌ Вашої адреси в базі немає. Пройдіть реєстрацію ще раз.")
@@ -197,27 +247,103 @@ async def address(message: Message):
 # --- Прийняття замовлення водієм
 @router.callback_query(F.data.startswith("accept_"))
 async def accept_order(callback: CallbackQuery):
-    passenger_id = int(callback.data.split("_")[1])
+    order_id = int(callback.data.split("_")[1])
+    driver_id = callback.from_user.id
+
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        cursor = await db.execute("SELECT passenger_id, status FROM orders WHERE id = ?",
+                              (order_id,)
+                              )
+        order = await cursor.fetchone()
+
+        if not order or order[1] != "pending":
+            await callback.message.edit_text("Замовлення вже обробленно")
+            await callback.answer()
+            return
+        
+        passenger_id = order[0]
+    
+        await db.execute(
+            "UPDATE orders SET status = ?, driver_id = ? WHERE id = ?", 
+            ("accepted", driver_id, order_id)
+        )
+        await db.commit()
 
     # --- Повідомлення пасажиру
     await callback.bot.send_message(chat_id=passenger_id,
                                     text="🚕 Водій прийняв ваше замовлення!")
     
     # --- Повідомлення водію
-    await callback.message.edit_text("✅ Ви прийняли замовлення")
+    await callback.message.edit_text(f"✅ Ви прийняли замовлення #{order_id}")
     await callback.answer()
 
 
 # --- Відхилення замовлення водієм
 @router.callback_query(F.data.startswith("reject_"))
 async def reject_order(callback: CallbackQuery):
-    passenger_id = int(callback.data.split("_")[1])
+    order_id = int(callback.data.split("_")[1])
+    current_driver_id = callback.from_user.id
 
-    await callback.bot.send_message(chat_id=passenger_id,
-            text="❌ Водій відхилив замовлення. Шукаємо наступного водія")
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        cursor = await db.execute(
+            "SELECT passenger_id, status, rejected_drivers, latitude, longitude "
+            "FROM orders WHERE id = ?",
+                                  (order_id,))
+        order = await cursor.fetchone()
+
+        if not order:
+            await callback.answer("Замовлення не знайдено", show_alert=True)
+            return
     
-    await callback.message.edit_text("❌ Ви відхилили замовлення")
+        passenger_id, status, rejected_json, shyryna, dovzhyna = order
 
+        if status != "pending":
+            await callback.message.edit_text("Замовлення вже оброблено")
+            await callback.answer()
+            return
+    
+        rejected_list = json.loads(rejected_json) if rejected_json else []
+        if current_driver_id not in rejected_list:
+            rejected_list.append(current_driver_id)
+
+        next_driver = await get_next_driver(exclude=rejected_list)
+
+        if not next_driver:
+            await db.execute(
+                "UPDATE orders SET status = ?, rejected_drivers = ? WHERE id = ?",
+                ("canceled", json.dumps(rejected_list), order_id)
+            )
+            await db.commit()
+
+            await callback.bot.send_message(chat_id=passenger_id,
+                                            text="Нажаль, віьних водіїв зараз немає")
+            await callback.message.edit_text("Ви відхилили замовлення")
+            await callback.answer()
+            return
+    
+        await db.execute(
+            "UPDATE orders SET rejected_drivers = ? WHERE id = ?",
+            (json.dumps(rejected_list), order_id)
+        )
+        await db.commit()
+
+    passenger_data = await get_passenger_info(passenger_id)
+    passenger_name = passenger_data.get("full_name", "Невідомо")
+    passenger_username = passenger_data.get("username", "Невідомо")
+
+    await callback.bot.send_message(
+        chat_id=next_driver,
+        text=f"🚕 <b>Нове замовлення:</b>\n\n"
+            f"👤 Пасажир: <b>{passenger_name}</b>\n"
+            f"👤 Username: <b>@{passenger_username}</b>\n"
+            f"📍 Локація:", 
+            parse_mode="HTML"
+    )
+    await callback.bot.send_location(chat_id=next_driver, latitude=shyryna, longitude=dovzhyna)
+    await callback.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
+                                   reply_markup=accept_reject_button(order_id))
+    
+    await callback.message.edit_text("Ви відхилили замовлення")
     await callback.answer()
 
 
@@ -233,9 +359,32 @@ async def reject_order(callback: CallbackQuery):
 
 
 
+    # async with aiosqlite.connect(DB_ORDERS) as db:
+    #     cursor = await db.execute("SELECT passenger_id, status FROM orders WHERE id =?",
+    #                               (order_id,))
+    #     order = await cursor.fetchone()
 
+    # if not order or order[1] != "pending":
+    #     await callback.answer("Замовлення вже оброблено", show_alert=True)
+    #     return
+    
+    # passenger_id = order[0]
 
+    # await callback.bot.send_message(chat_id=passenger_id, text="Нажаль усі водії зара зайняті, спробуйте пізнше!")    
+    #     async with aiosqlite.connect(DB_ORDERS) as db:
+    #         await db.execute(
+    #         "UPDATE orders SET status = ?, driver_id = ? WHERE id = ?",
+    #         ("canceled", callback.from_user.id, order_id)
+    #     )
 
+    # await callback.bot.send_message(chat_id=passenger_id,
+    #         text="❌ Водій відхилив замовлення. Шукаємо наступного водія")
+    
+    # await callback.message.edit_text("❌ Ви відхилили замовлення")
+
+    # await callback.answer()
+
+# --- Повернутися до головнх кнопок
 @router.message(F.text == "Повернутися до головного меню 🔙")
 async def cancel(message: Message):
     await message.answer("<b>Замовляй авто</b>, або обери інший пункт який тебе ціквить.", parse_mode="HTML",
@@ -344,20 +493,35 @@ async def price(message: Message):
 async def go_work(message: Message):
     user_id = message.from_user.id
 
-    if user_id in driversWork:
-        await message.answer("Ви вже працюєте🤑\nЧекайте на змовлення", reply_markup=to_leave_line())
-
     if user_id not in driversID:
         await message.answer(f"Вибачте, на жаль, ви не є водієм нашої компанії\n" \
-        f"Якщо хочете стати водієм - пишіть @{ADMIN_USERNAME}")
+            f"Якщо хочете стати водієм - пишіть @{ADMIN_USERNAME}")
         return
+
+    async with aiosqlite.connect(DB_USERS) as db:
+
+        cursor = await db.execute(
+            "SELECT role FROM users WHERE telegram_id = ?",
+            (user_id,)
+        )
+        row = await cursor.fetchone()
+        role = row[0] if row else None
+
+        if role == "driver":
+            await message.answer("Ви вже працюєте🤑\nЧекайте на змовлення", reply_markup=to_leave_line())
+            return
+        
+
+        await db.execute("UPDATE users SET role = 'driver' WHERE telegram_id = ?",
+                            (user_id,)
+        )
+        await db.commit()
     
     if user_id not in driversWork:
         driversWork.append(user_id)
-        await message.answer("Вітаємо, ви на лінії✅\nСкоро замовлення!🚕", 
+    
+    await message.answer("Вітаємо, ви на лінії✅\nСкоро замовлення!🚕", 
                              reply_markup=to_leave_line())
-        return
-
     
 # --- Функція зняття з лінії
 @router.message(F.text == "Зійти з лінії")

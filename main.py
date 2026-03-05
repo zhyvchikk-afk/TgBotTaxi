@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from handlers.routes import router
 from config import BOT_TOKEN
 import aiosqlite
-from databases import init_db, init_db_prices
+from databases import init_db, init_db_prices, init_db_orders
 
 
 TOKEN = BOT_TOKEN
@@ -24,6 +24,7 @@ async def main():
     # Створення таблиці в БД якщо такої немає
     await init_db()
     await init_db_prices()
+    await init_db_orders()
     
     # Перевірка запуску бота
     print('Start...')

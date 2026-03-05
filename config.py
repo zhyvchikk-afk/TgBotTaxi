@@ -4,11 +4,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = getenv("BOT_TOKEN")
-ADMIN_ID = int(getenv("ADMIN_ID"))
-ADMIN_USERNAME = getenv("ADMIN_USERNAME")
 
 DB_USERS = getenv("DB_USERS")
 DB_PRICES = getenv("DB_PRICES")
+DB_ORDERS = getenv("DB_ORDERS")
+
+ADMIN_ID = int(getenv("ADMIN_ID"))
+ADMIN_USERNAME = getenv("ADMIN_USERNAME")
 
 MY_COMPUTER = int(getenv("MY_COMPUTER"))
 KRISTINA = int(getenv("KRISTINA"))

@@ -46,11 +46,11 @@ def inline_way_button():
     )
     return keyboard
 
-def accept_reject_button(passenger_id: int):
+def accept_reject_button(order_id: int):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Прийняти ✅", callback_data=f"accept_{passenger_id}")],
-            [InlineKeyboardButton(text="Відхилити ❌", callback_data=f"reject_{passenger_id}")]
+            [InlineKeyboardButton(text="Прийняти ✅", callback_data=f"accept_{order_id}")],
+            [InlineKeyboardButton(text="Відхилити ❌", callback_data=f"reject_{order_id}")]
         ]
     )
     return keyboard

@@ -1,5 +1,5 @@
 import aiosqlite
-from config import DB_USERS, DB_PRICES
+from config import DB_USERS, DB_PRICES, DB_ORDERS
 from aiogram.types import Message
 import asyncio
 from prices import all_data
@@ -87,3 +87,21 @@ async def get_prices():
         result = await cursor.fetchall()
         return result
     
+
+# --- Створення таблиці замовлень
+async def init_db_orders():
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         passenger_id INTEGER NOT NULL,
+                         driver_id INTEGER,
+                         status TEXT NOT NULL,
+                         latitude REAL,
+                         longitude REAL,
+                         address TEXT,
+                         rejected_drivers TEXT DEFAULT '[]',
+                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                         )
+                        """)
+        await db.commit()
