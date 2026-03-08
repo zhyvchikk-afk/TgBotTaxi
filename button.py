@@ -4,12 +4,24 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
 )
+from aiogram_calendar import SimpleCalendar
 
 def get_order_some_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Замовити таксі 🚕"), KeyboardButton(text="Тарифи 📋")],
             [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+def admin_id():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Замовити таксі 🚕"), KeyboardButton(text="Тарифи 📋")],
+            [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")],
+            [KeyboardButton(text="Адмін-панель🧮")]
         ],
         resize_keyboard=True
     )
@@ -63,3 +75,36 @@ def to_leave_line():
         resize_keyboard=True
     )
     return keyboard
+
+def admin_button():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Додати водія➕"), 
+             KeyboardButton(text="Видалити водія➖")],
+            [KeyboardButton(text="Список водіїв"), 
+             KeyboardButton(text="Водії на лінії"),
+             KeyboardButton(text="📊Статистика замовлень")],
+            [KeyboardButton(text="Повернутися до головного меню 🔙")]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+def cancel_admin():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard = [
+            [KeyboardButton(text="Скасувати ❌")]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+# def statistics_status_button():
+#     keyboard = ReplyKeyboardMarkup(
+#         keyboard = [
+#             [KeyboardButton(text="✅Виконано"), KeyboardButton(text="❌Відмовлено"), KeyboardButton(text="🟡Очікує")],
+#             [KeyboardButton(text="Всі"), KeyboardButton(text="🔙Назад")],
+#         ],
+#         resize_keyboard=True
+#     )
+#     return keyboard

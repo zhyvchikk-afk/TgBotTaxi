@@ -6,7 +6,6 @@ from prices import all_data
 
 
 
-
 # Функція зі створення таблиці в БД якщо такої немає 
 async def init_db():
     async with aiosqlite.connect(DB_USERS) as db:
@@ -14,6 +13,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS users (
                          id INTEGER PRIMARY KEY AUTOINCREMENT,
                          role TEXT DEFAULT "passenger",
+                         is_online INTEGER DEFAULT 0,
                          telegram_id INTEGER UNIQUE,
                          username TEXT,
                          full_name TEXT,

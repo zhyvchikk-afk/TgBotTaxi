@@ -26,6 +26,7 @@ async def main():
     await init_db_prices()
     await init_db_orders()
     
+    
     # Перевірка запуску бота
     print('Start...')
     # Запуск і постійна робота бота
