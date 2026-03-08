@@ -18,7 +18,11 @@ async def init_db():
                          username TEXT,
                          full_name TEXT,
                          age INTEGER,
-                         address TEXT
+                         address TEXT,
+                         phone TEXT,
+                         car TEXT,
+                         color TEXT,
+                         number TEXT
                          )
                         """)
         await db.commit()
@@ -31,17 +35,18 @@ async def user_exists(telegram_id: int):
         user = await cursor.fetchone()
         return user is not None
 
-async def add_user(message: Message, age: int, address: str):
+async def add_user(message: Message, age: int, address: str, phone: str):
     async with aiosqlite.connect(DB_USERS) as db:
         await db.execute("""INSERT INTO users 
-            (telegram_id, username, full_name, age, address)
-            VALUES (?, ?, ?, ?, ?)""",
+            (telegram_id, username, full_name, age, address, phone)
+            VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 message.from_user.id,
                 message.from_user.username,
                 message.from_user.full_name,
                 age,
-                address
+                address,
+                phone
             )
         )
         await db.commit()

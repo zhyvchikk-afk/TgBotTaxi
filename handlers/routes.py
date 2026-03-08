@@ -43,6 +43,7 @@ from aiogram.fsm.state import State, StatesGroup
 class Register(StatesGroup):
     age = State()
     address = State()
+    phone = State()
 
 class RegisterDriver(StatesGroup):
     car = State()
@@ -103,22 +104,17 @@ async def get_passenger_info(passenger_id: int) -> dict:
 # --- Старт та реєстрація
 @router.message(Command("start"))
 async def start(message: Message):
+    user_id = message.from_user.id
     if not await user_exists(message.from_user.id):
         await message.answer(
         "Привіт! Я Бот для замовлення таксі в місті Южнукраїнськ і не тільки!\n" \
         "Спершу зареєструємо тебе!", parse_mode="HTML",
         reply_markup=register_button())
         return
-    
-    if message.from_user.id != ADMIN_ID:
-        await message.answer(
+
+    await message.answer(
             "<b>Замовляй авто</b>, або обери інший пункт який тебе ціквить.", parse_mode="HTML",
-            reply_markup=get_order_some_keyboard())
-    else:
-        await message.answer(
-            "Привіт, що робитиемо сьогодні?", parse_mode="HTML",
-                reply_markup=admin_id()
-        )
+            reply_markup=get_order_some_keyboard() if user_id != ADMIN_ID else admin_id())
 
 @router.message(F.text == "Зареєструватися")
 async def register_start(message: Message, state: FSMContext):
@@ -148,11 +144,18 @@ async def get_age(message: Message, state: FSMContext):
 
 @router.message(Register.address, F.text)
 async def get_address(message: Message, state: FSMContext):
+    await state.update_data(address=str(message.text))
+    await message.answer("Введіть Ваш номер телефону: +38 ...")
+    await state.set_state(Register.phone)
+
+@router.message(Register.phone, F.text)    
+async def get_phone(message: Message, state: FSMContext):
     data = await state.get_data()
     age = data["age"]
-    address = message.text
+    address = data["address"]
+    phone = message.text
 
-    await add_user(message, age, address)
+    await add_user(message, age, address, phone)
     await message.answer("Реєстрацію завершено 🎉", reply_markup=get_order_some_keyboard())
     await state.clear()
     
@@ -181,6 +184,7 @@ async def get_next_driver(exclude: list[int] = []):
 # --- Замовлення авто, тарифи, про нас
 @router.message(F.text == "Замовити таксі 🚕")
 async def order(message: Message):
+    user_id = message.from_user.id
     await message.answer("Введіть адресу, або оберіть пункт нижче: ",
                          reply_markup=location_button())
 
@@ -385,14 +389,9 @@ async def reject_order(callback: CallbackQuery):
 # --- Повернутися до головнх кнопок
 @router.message(F.text == "Повернутися до головного меню 🔙")
 async def cancel(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("<b>Замовляй авто</b>, або обери інший пункт який тебе ціквить.", parse_mode="HTML",
-                            reply_markup=get_order_some_keyboard())
-    else:
-        await message.answer(
-            "Привіт, що робитиемо сьогодні?", parse_mode="HTML",
-            reply_markup=admin_id()
-        )
+    user_id = message.from_user.id
+    await message.answer("<b>Замовляй авто</b>, або обери інший пункт який тебе ціквить.", parse_mode="HTML",
+                            reply_markup=get_order_some_keyboard() if user_id != ADMIN_ID else admin_id())
 
 
 @router.message(F.text == "Тарифи 📋")
@@ -494,28 +493,78 @@ async def price(message: Message):
 
 # --- Функція виходу водія на лінію
 @router.message(F.text == "Працювати з нами🪙")
-async def go_work(message: Message):
+async def go_work(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    
+
     async with  aiosqlite.connect(DB_USERS) as db:
-        cursor = await db.execute("SELECT role, is_online FROM users WHERE telegram_id = ?",
+        cursor = await db.execute("SELECT role, is_online, car, color, number FROM users WHERE telegram_id = ?",
                                   (user_id,))
         row = await cursor.fetchone()
-        role = row[0] if row else None
-        is_online = row[1] if row else None
+
+        if not row:
+            await message.answer("❌ Ви не зареєстровані в системі.",
+                                 reply_markup=register_button())
+            return
+        
+        role, is_online, car, color, number = row
 
         if role != 'driver':
-            await message.answer("Вибачте, але ви не є водієм компанії")
+            await message.answer("Вибачте, але ви не є водієм компанії❌")
+            return
+        
+        if not all([car, color, number]):
+            await message.answer("Для роботи необхідно додати дані про автомобіль\nЯка марка та модель Вашого авто?🚗\nНаприклад Volkswagen Passat")
+            await state.set_state(RegisterDriver.car)
             return
 
         if is_online != 0:
-            await message.answer("Ви і так на лінії✅ ", reply_markup=to_leave_line())
+            await message.answer("Ви і так на лінії✅ ", reply_markup=to_leave_line() if user_id != ADMIN_ID else to_leave_line())
             return
 
         await db.execute("UPDATE users SET is_online = 1 WHERE telegram_id = ?",
                          (user_id,))
         await db.commit()
-        await message.answer("Гарних пасажирів та вдалого заробітку!😌", reply_markup=to_leave_line())
+        await message.answer(f"Гарних пасажирів та вдалого заробітку!😌\n\n"
+                                f"Ваше авто: <b>{color} {car}\n</b>"
+                                f"Номерний знак: <b>{number}</b>", parse_mode="HTML",
+                                reply_markup=to_leave_line() if user_id != ADMIN_ID else to_leave_line())
+        
+@router.message(RegisterDriver.car)
+async def register_car(message: Message, state: FSMContext):
+    await state.update_data(car=message.text)
+    await message.answer("Який колір Вашого авто? 🎨")
+    await state.set_state(RegisterDriver.color)
+
+@router.message(RegisterDriver.color)
+async def register_color(message: Message, state: FSMContext):
+    await state.update_data(color=message.text)
+    await message.answer("Введіть державний номерний знак🔢\n"
+    "Наприклад: ВЕ 1234 НА")
+    await state.set_state(RegisterDriver.number)
+
+@router.message(RegisterDriver.number)
+async def register_number(message: Message, state: FSMContext):
+    data = await state.get_data()
+    car = data["car"]
+    color = data["color"]
+    number = message.text
+
+    async with aiosqlite.connect(DB_USERS) as db:
+        await db.execute(
+            "UPDATE users SET car = ?, color = ?, number = ?, is_online = 1 WHERE telegram_id = ?",
+            (car, color, number, message.from_user.id)
+        )
+        await db.commit()
+
+    await state.clear()
+    await message.answer(
+        f"✅ Дані збережено!\n"
+        f"🚗 Авто: <b>{color} {car}</b>\n"
+        f"🔢 Номерний знак: <b>{number}</b>\n\n"
+        f"Ви на лінії! Вдалого заробітку! 🪙", parse_mode="HTML",
+        reply_markup=to_leave_line()
+    )
+
 
     
 # --- Функція зняття з лінії
@@ -535,22 +584,15 @@ async def go_home(message: Message):
             return
 
         if is_online != 1:
-            if user_id != ADMIN_ID:
-                await message.answer("Ви і так не на лінії❌", reply_markup=get_order_some_keyboard())
-                return
-            else:
-                await message.answer("Ви і так не на лінії❌", reply_markup=admin_id())
-                return
-
+            await message.answer("Ви і так не на лінії❌", reply_markup=get_order_some_keyboard() if user_id != ADMIN_ID else admin_id())
+            return
         await db.execute("UPDATE users SET is_online = 0 WHERE telegram_id = ?",
                          (user_id,))
         await db.commit()
-        if user_id != ADMIN_ID:
-            await message.answer("Гарно відпочити!😌", reply_markup=get_order_some_keyboard())
-        else:
-            await message.answer("Гарно відпочити!😌", reply_markup=admin_id())
+        await message.answer("Гарно відпочити!😌", reply_markup=get_order_some_keyboard() if user_id != ADMIN_ID else admin_id())
 
-# --- Список користувачів
+
+# --- Список користувачів ????????????????????????????????????????????????
 @router.message(Command('users'))
 async def users(message: Message):
     if message.from_user.id != ADMIN_ID: 
@@ -615,7 +657,7 @@ async def add_driver_process(message: Message, state: FSMContext):
                          (user_id,))
         await db.commit()
     
-    await message.answer(f"✅ @{username} став водієм", parse_mode="HTML")
+    await message.answer(f"✅ @{username} став водієм", parse_mode="HTML", reply_markup=admin_button())
     await state.clear()
 
 
@@ -653,7 +695,8 @@ async def remove_driver_process(message: Message, state: FSMContext):
                          (user_id,))
         await db.commit()
     
-    await message.answer(f"✅ @{username} більше не є водієм", parse_mode="HTML")
+    await message.answer(f"✅ @{username} більше не є водієм", parse_mode="HTML",
+                        reply_markup=admin_button())
     await state.clear()
 
 
@@ -662,7 +705,7 @@ async def remove_driver_process(message: Message, state: FSMContext):
 async def list_drivers(message: Message):
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
-            "SELECT telegram_id, username, full_name FROM users WHERE role = 'driver'",
+            "SELECT telegram_id, username, full_name, car, color, number FROM users WHERE role = 'driver'",
         )
         result = await cursor.fetchall()
 
@@ -671,9 +714,16 @@ async def list_drivers(message: Message):
             return
         
         text = f"<b>Усі водії компанії:</b>\n\n"
-        for tg_id, username, fullname in result:
-            text += f"🪪 <b>Username:</b> @{username}\n <b>| Ім'я:</b> {fullname}\n <b>| tg_id:</b> {tg_id}\n\n"
-
+        for tg_id, username, fullname, car, color, number in result:
+            data_list = [
+                f"🪪 <b>Username:</b> @{username}\n"
+                f" | <b>Ім'я:</b> {fullname}\n"
+                f" | <b>ID:</b> {tg_id}\n"
+                f" | <b>Авто:</b> {car}\n"
+                f" | <b>Колір:</b> {color}\n"
+                f" | <b>Номерний знак:</b> {number}\n\n"
+            ]
+            text += "\n\n".join(data_list)
         await message.answer(text, parse_mode="HTML")
         await db.commit()
 
@@ -683,7 +733,7 @@ async def list_drivers(message: Message):
 async def online_drivers(message: Message):
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
-            "SELECT telegram_id, username, full_name FROM users WHERE role = 'driver' AND is_online = 1",
+            "SELECT telegram_id, username, full_name, car, color, number FROM users WHERE role = 'driver' AND is_online = 1",
         )
         result = await cursor.fetchall()
 
@@ -691,12 +741,20 @@ async def online_drivers(message: Message):
             await message.answer("❌ Онлайн водіїв не знайдено")
             return
         
-        text = f"<b>Водії онлайн:</b>\n\n"
-        for tg_id, username, fullname in result:
-            text += f"🪪 <b>Username:</b> @{username}\n <b>| Ім'я:</b> {fullname}\n <b>| tg_id:</b> {tg_id}\n\n"
-
+        text = f"<b>Водії на лінії:</b>\n\n"
+        for tg_id, username, fullname, car, color, number in result:
+            data_list = [
+                f"🪪 <b>Username:</b> @{username}\n"
+                f" | <b>Ім'я:</b> {fullname}\n"
+                f" | <b>ID:</b> {tg_id}\n"
+                f" | <b>Авто:</b> {car}\n"
+                f" | <b>Колір:</b> {color}\n"
+                f" | <b>Номерний знак:</b> {number}\n\n"
+            ]
+            text += "\n\n".join(data_list)
         await message.answer(text, parse_mode="HTML")
         await db.commit()
+
 
 
 # --- Статистика замовлень
