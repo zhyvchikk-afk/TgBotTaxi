@@ -6,6 +6,25 @@ from aiogram.types import (
 )
 from aiogram_calendar import SimpleCalendar
 
+def register_button():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Зареєструватися")]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+def send_phone():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard = [
+            [KeyboardButton(text="📱 Поділитися номером", request_contact=True)]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    return keyboard
+
 def get_order_some_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
@@ -27,21 +46,12 @@ def admin_id():
     )
     return keyboard
 
-def register_button():
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Зареєструватися")]
-        ],
-        resize_keyboard=True
-    )
-    return keyboard
-
 def location_button():
     keyboard = ReplyKeyboardMarkup(
         keyboard = [
             [KeyboardButton(text='Надіслати локацію 📍', request_location=True), 
-            KeyboardButton(text="Надіслати збережену адресу 🏠")],
-            [KeyboardButton(text="Повернутися до головного меню 🔙")]
+            KeyboardButton(text="Ввести адресу вручну✏️")],
+            [KeyboardButton(text="Надіслати збережену адресу 🏠"), KeyboardButton(text="Повернутися до головного меню 🔙")]
         ],
         resize_keyboard=True
     )

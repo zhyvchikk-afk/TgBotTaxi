@@ -15,7 +15,8 @@ from aiogram.fsm.context import FSMContext
 import aiosqlite
 from button import (
     get_order_some_keyboard,
-    register_button, 
+    register_button,
+    send_phone, 
     inline_way_button,
     location_button,
     to_leave_line,
@@ -36,25 +37,9 @@ import json
 from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
-
-# Клас з додатковими полями для реєстрації
 from aiogram.fsm.state import State, StatesGroup
-class Register(StatesGroup):
-    age = State()
-    address = State()
-    phone = State()
-
-class RegisterDriver(StatesGroup):
-    car = State()
-    color = State()
-    number = State()
-
-class AdminStates(StatesGroup):
-    add_driver = State()
-    remove_driver = State()
-
-
+from states import Register, RegisterDriver, AdminStates, Address
+import asyncio
 
 router = Router()
 def split_text(text, limit=4000):
@@ -79,27 +64,58 @@ def split_text(text, limit=4000):
     chunks.append(text)
     return chunks
 
-driversWork = []
 driver_index = 0
-driversID = [MY_COMPUTER, KRISTINA, EUGENE, KOSTYA_LIFE]
 active_order = {}
 
 # --- Функція отримання данних користувача з БД
 async def get_passenger_info(passenger_id: int) -> dict:
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
-            "SELECT full_name, username FROM users WHERE id = ?",
+            "SELECT full_name, username, phone FROM users WHERE telegram_id = ?",
             (passenger_id,)
         )
         row = await cursor.fetchone()
 
     if row:
-        full_name, username = row
-        return {"full_name": full_name, "username": username}
+        full_name, username, phone = row
+        return {"full_name": full_name, "username": username, "phone": phone}
     else:
-        return {"full_name": "Невідомо", "username": "Невідомо"}
+        return {"full_name": "Невідомо", "username": "Невідомо", "phone": "Невідомо"}
 
+# --- Функція таймера для замовлень
+async def order_timeout(bot, order_id, driver_id):
+    await asyncio.sleep(30)
 
+    async with aiosqlite.connect(DB_ORDERS)as db:
+        cursor = await db.execute(
+            "SELECT status FROM orders WHERE id = ?",
+            (order_id,)
+        )
+        row = await cursor.fetchone()
+
+    if not row:
+        return
+    
+    status = row[0]
+
+    if status == "pending":
+        fake_callback = type("obj", (), {})()
+        fake_callback.data = f"reject_{order_id}"
+        fake_callback.from_user = type("obj", (), {"id": driver_id})()
+        fake_callback.bot = bot
+
+        async def fake_answer(*args, **kwargs): return True
+        fake_callback.answer = fake_answer
+
+        async def fake_edit(*args, **kwargs): return True    
+        
+        fake_callback.message = type("obj", (), {
+            "chat": type("obj", (), {"id": driver_id})(),
+            "bot": bot,
+            "edit_text": fake_edit
+        })()
+
+        await reject_order(fake_callback)
 
 # --- Старт та реєстрація
 @router.message(Command("start"))
@@ -124,7 +140,7 @@ async def register_start(message: Message, state: FSMContext):
             reply_markup=ReplyKeyboardRemove())
         return
     
-    await message.answer("Будь ласка, вкажіть свій вік: ")
+    await message.answer("Будь ласка, вкажіть свій вік: ", reply_markup=ReplyKeyboardRemove())
     await state.set_state(Register.age)
 
 @router.message(Register.age, F.text)
@@ -145,18 +161,22 @@ async def get_age(message: Message, state: FSMContext):
 @router.message(Register.address, F.text)
 async def get_address(message: Message, state: FSMContext):
     await state.update_data(address=str(message.text))
-    await message.answer("Введіть Ваш номер телефону: +38 ...")
+    await message.answer("Поділіться Вашим номеом телефону:", reply_markup=send_phone())
     await state.set_state(Register.phone)
 
-@router.message(Register.phone, F.text)    
+@router.message(Register.phone, F.contact)    
 async def get_phone(message: Message, state: FSMContext):
     data = await state.get_data()
     age = data["age"]
     address = data["address"]
-    phone = message.text
+    phone = message.contact.phone_number
 
-    await add_user(message, age, address, phone)
-    await message.answer("Реєстрацію завершено 🎉", reply_markup=get_order_some_keyboard())
+    phone_clean = phone.strip()
+    if not phone_clean.startswith("+"):
+        phone_clean = f"+{phone_clean}"
+
+    await add_user(message, age, address, phone_clean)
+    await message.answer("Реєстрацію завершено 🎉", reply_markup=get_order_some_keyboard() if message.from_user.id != ADMIN_ID else admin_id())
     await state.clear()
     
 # --- Функція з визначення наступного водія
@@ -185,8 +205,81 @@ async def get_next_driver(exclude: list[int] = []):
 @router.message(F.text == "Замовити таксі 🚕")
 async def order(message: Message):
     user_id = message.from_user.id
-    await message.answer("Введіть адресу, або оберіть пункт нижче: ",
-                         reply_markup=location_button())
+    
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT is_online FROM users WHERE telegram_id = ?",
+            (user_id,)
+        )
+        await db.commit()
+        row = await cursor.fetchone()
+        is_online = row[0] if row else None
+    
+    if is_online != 0:
+        await message.answer("Ви не можете замовити машину, якщо знаходитесь на лінії!")
+        return
+
+    await message.answer("Оберіть пункт нижче👇🏻",
+                        reply_markup=location_button())
+    
+
+@router.message(F.text == "Ввести адресу вручну✏️")
+async def write_address(message: Message, state: FSMContext):
+    await message.answer("Введіть адресу. Наприклад: Шевченка 8, 3 під'їзд", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(Address.address)
+
+# --- Відправка разової адреси
+@router.message(Address.address, F.text)
+async def get_address_write(message: Message, state: FSMContext):
+    address = message.text
+    await message.answer("Адресу отримано!✅\nШукаємо водія...")
+
+    timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    created_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
+
+    async with aiosqlite.connect(DB_ORDERS)as db:
+        cursor = await db.execute(""
+            "INSERT INTO orders (passenger_id, status, address, created_at, rejected_drivers)" \
+            "VALUES (?, ?, ?, ?, ?)", (message.from_user.id, "pending", address, created_at, json.dumps([]))
+        )
+        await db.commit()
+        order_id = cursor.lastrowid
+    await state.clear()
+
+    next_driver = await get_next_driver()
+    if not next_driver:
+        async with aiosqlite.connect(DB_ORDERS) as db:
+            await db.execute(
+                "UPDATE orders SET status = 'canceled' WHERE id = ?",
+                (order_id,)
+            )
+            await db.commit()
+            await message.answer("Вибачте, наразі жодного водія немає❌")
+            return
+    
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT phone FROM users WHERE telegram_id = ?",
+            (message.from_user.id,)
+        )
+        await db.commit()
+        row = await cursor.fetchone()
+        phone_passenger = row[0] if row else None
+    
+    await message.bot.send_message(chat_id=next_driver, text=f"🚕 <b>Нове замовлення: #{order_id}</b>\n\n"
+                                     f"🪪 Пасажир: <b>{message.from_user.full_name}</b>\n"
+                                     f"👤 Username: <b>@{message.from_user.username}</b>\n"
+                                     f"📱 Телефон: <b><a href='tel:{phone_passenger}'>{phone_passenger}</a></b>\n"
+                                     f"📍 Адреса: {address}", parse_mode="HTML"
+        )
+    await message.bot.send_message(
+        chat_id=next_driver,
+        text=f"<b>Прийняти замовлення #{order_id}?</b>🏎", parse_mode="HTML",
+                                   reply_markup=accept_reject_button(order_id))
+    
+    asyncio.create_task(
+        order_timeout(message.bot, order_id, next_driver)
+    )
 
 
 # --- Відправка локації
@@ -221,14 +314,28 @@ async def location(message: Message, state: FSMContext):
             await db.commit()
             return
     
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT phone FROM users WHERE telegram_id = ?",
+            (message.from_user.id,)
+        )
+        await db.commit()
+        row = await cursor.fetchone()
+        phone_passenger = row[0] if row else None
+    
     await message.bot.send_message(chat_id=next_driver, text=f"🚕 <b>Нове замовлення: #{order_id}</b>\n\n"
-                                     f"👤 Пасажир: <b>{message.from_user.full_name}</b>\n"
+                                     f"🪪 Пасажир: <b>{message.from_user.full_name}</b>\n"
                                      f"👤 Username: <b>@{message.from_user.username}</b>\n"
+                                     f"📱 Телефон: <b><a href='tel:{phone_passenger}'>{phone_passenger}</a></b>\n"
                                      f"📍 Локація:", parse_mode="HTML"
         )
     await message.bot.send_location(chat_id=next_driver, latitude=shyryna, longitude=dovzhyna)
     await message.bot.send_message(chat_id=next_driver, text=f"<b>Прийняти замовлення #{order_id}?</b>🏎", parse_mode="HTML",
                                    reply_markup=accept_reject_button(order_id))
+       
+    asyncio.create_task(
+        order_timeout(message.bot, order_id, next_driver)
+    )
     
 
 # --- Відправка адреси
@@ -245,8 +352,6 @@ async def address(message: Message):
     if not user_address:
         await message.answer("❌ Вашої адреси в базі немає. Пройдіть реєстрацію ще раз.")
         return
-    
-    await message.answer("Адресу отримано ✅\nШукаємо водія...")
 
     timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
     created_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
@@ -272,15 +377,29 @@ async def address(message: Message):
             return
 
     if user_address:
-        await message.answer(f"Вашу адресу <b>{user_address}</b> надіслано водію!", parse_mode="HTML")
-        await message.bot.send_message(
-            chat_id=next_driver, text=f"🚕 <b>Нове замовлення:</b>\n\n"
-                                     f"👤 Пасажир: <b>{message.from_user.full_name}</b>\n"
-                                     f"👤 Username: <b>@{message.from_user.username}</b>\n"
-                                     f"📍 Адреса: <b>{user_address}</b>\n", parse_mode="HTML"
+        await message.answer(f"Вашу адресу <b>{user_address}</b> отримано! Шукаємо водія...", parse_mode="HTML")
+    
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT phone FROM users WHERE telegram_id = ?",
+            (message.from_user.id,)
         )
-        await message.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
-                                   reply_markup=accept_reject_button(order_id))
+        await db.commit()
+        row = await cursor.fetchone()
+        phone_passenger = row[0] if row else None
+    
+    await message.bot.send_message(chat_id=next_driver, text=f"🚕 <b>Нове замовлення: #{order_id}</b>\n\n"
+                                     f"🪪 Пасажир: <b>{message.from_user.full_name}</b>\n"
+                                     f"👤 Username: <b>@{message.from_user.username}</b>\n"
+                                     f"📱 Телефон: <b><a href='tel:{phone_passenger}'>{phone_passenger}</a></b>\n"
+                                     f"📍 Адреса: {user_address}", parse_mode="HTML"
+        )
+    await message.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
+                                reply_markup=accept_reject_button(order_id))
+        
+    asyncio.create_task(
+        order_timeout(message.bot, order_id, next_driver)
+    )
 
 # --- Прийняття замовлення водієм
 @router.callback_query(F.data.startswith("accept_"))
@@ -306,10 +425,24 @@ async def accept_order(callback: CallbackQuery):
             ("accepted", driver_id, order_id)
         )
         await db.commit()
-
+    
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT full_name, phone, car, color, number FROM users WHERE telegram_id = ?",
+            (driver_id,)
+        )
+        row = await cursor.fetchone()
+        full_name, phone, car, color, number = row
+    text_info = (
+        f"👤 Водій <b>{full_name}</b> прийняв Ваше замовлення!\n"
+        f"📱 Телефон: <a href='tel:{phone}'>{phone}</a>\n"
+        f"🚕 Автомобіль: <b>{color} {car}</b>\n"
+        f"🔢 Номерний знак: <b>{number}</b>\n"
+    )
     # --- Повідомлення пасажиру
     await callback.bot.send_message(chat_id=passenger_id,
-                                    text="🚕 Водій прийняв ваше замовлення!")
+                                    text=text_info, parse_mode="HTML",
+                                    reply_markup=get_order_some_keyboard())
     
     # --- Повідомлення водію
     await callback.message.edit_text(f"✅ Ви прийняли замовлення #{order_id}")
@@ -324,16 +457,15 @@ async def reject_order(callback: CallbackQuery):
 
     async with aiosqlite.connect(DB_ORDERS) as db:
         cursor = await db.execute(
-            "SELECT passenger_id, status, rejected_drivers, latitude, longitude "
-            "FROM orders WHERE id = ?",
-                                  (order_id,))
+            "SELECT passenger_id, status, rejected_drivers, latitude, longitude, address FROM orders WHERE id = ?",
+            (order_id,))
         order = await cursor.fetchone()
 
         if not order:
             await callback.answer("❌Замовлення не знайдено", show_alert=True)
             return
     
-        passenger_id, status, rejected_json, shyryna, dovzhyna = order
+        passenger_id, status, rejected_json, latitude, longitude, address = order
 
         if status != "pending":
             await callback.message.edit_text("Замовлення вже оброблено")
@@ -354,7 +486,8 @@ async def reject_order(callback: CallbackQuery):
             await db.commit()
 
             await callback.bot.send_message(chat_id=passenger_id,
-                                            text="Нажаль, вільних водіїв зараз немає❌\nСпробуйте пізніше")
+                                            text="Нажаль, вільних водіїв зараз немає❌\nСпробуйте пізніше",
+                                            reply_markup=get_order_some_keyboard())
             await callback.message.edit_text("Ви відхилили замовлення❌")
             await callback.answer()
             return
@@ -368,19 +501,34 @@ async def reject_order(callback: CallbackQuery):
     passenger_data = await get_passenger_info(passenger_id)
     passenger_name = passenger_data.get("full_name", "Невідомо")
     passenger_username = passenger_data.get("username", "Невідомо")
+    passenger_phone = passenger_data.get("phone", "Невідомо")
 
-    await callback.bot.send_message(
-        chat_id=next_driver,
-        text=f"🚕 <b>Нове замовлення:</b>\n\n"
-            f"👤 Пасажир: <b>{passenger_name}</b>\n"
-            f"👤 Username: <b>@{passenger_username}</b>\n"
-            f"📍 Локація:", 
-            parse_mode="HTML"
-    )
-    await callback.bot.send_location(chat_id=next_driver, latitude=shyryna, longitude=dovzhyna)
-    await callback.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
-                                   reply_markup=accept_reject_button(order_id))
-    
+    if not address: 
+        await callback.bot.send_message(
+            chat_id=next_driver,
+            text=f"🚕 <b>Нове замовлення: #{order_id}</b>\n\n"
+                f"🪪 Пасажир: <b>{passenger_name}</b>\n"
+                f"👤 Username: <b>@{passenger_username}</b>\n"
+                f"📱 Телефон: <b><a href='tel:{passenger_phone}'>{passenger_phone}</a></b>\n"
+                f"📍 Локація:", 
+                parse_mode="HTML"
+        )
+        await callback.bot.send_location(chat_id=next_driver, latitude=latitude, longitude=longitude)
+        await callback.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
+                                    reply_markup=accept_reject_button(order_id))
+    else:
+        await callback.bot.send_message(
+            chat_id=next_driver,
+            text=f"🚕 <b>Нове замовлення: #{order_id}</b>\n\n"
+                f"🪪 Пасажир: <b>{passenger_name}</b>\n"
+                f"👤 Username: <b>@{passenger_username}</b>\n"
+                f"📱 Телефон: <b><a href='tel:{passenger_phone}'>{passenger_phone}</a></b>\n"
+                f"📍 Адреса: <b>{address}</b>", 
+                parse_mode="HTML"
+        )
+        await callback.bot.send_message(chat_id=next_driver, text="<b>Прийняти замовлення?</b>🏎", parse_mode="HTML",
+                            reply_markup=accept_reject_button(order_id))
+        
     await callback.message.edit_text("Ви відхилили замовлення")
     await callback.answer()
 
@@ -716,12 +864,12 @@ async def list_drivers(message: Message):
         text = f"<b>Усі водії компанії:</b>\n\n"
         for tg_id, username, fullname, car, color, number in result:
             data_list = [
-                f"🪪 <b>Username:</b> @{username}\n"
-                f" | <b>Ім'я:</b> {fullname}\n"
-                f" | <b>ID:</b> {tg_id}\n"
-                f" | <b>Авто:</b> {car}\n"
-                f" | <b>Колір:</b> {color}\n"
-                f" | <b>Номерний знак:</b> {number}\n\n"
+                f"🪪 Username: <b>@{username}</b>\n"
+                f"👤 Ім'я: <b>{fullname}</b>\n"
+                f"🆔 ID: <b>{tg_id}</b>\n"
+                f"🚘 Авто: <b>{car}</b>\n"
+                f"🎨 Колір: <b>{color}</b>\n"
+                f"🔢 Номерний знак: <b>{number}</b>\n\n"
             ]
             text += "\n\n".join(data_list)
         await message.answer(text, parse_mode="HTML")
@@ -744,12 +892,12 @@ async def online_drivers(message: Message):
         text = f"<b>Водії на лінії:</b>\n\n"
         for tg_id, username, fullname, car, color, number in result:
             data_list = [
-                f"🪪 <b>Username:</b> @{username}\n"
-                f" | <b>Ім'я:</b> {fullname}\n"
-                f" | <b>ID:</b> {tg_id}\n"
-                f" | <b>Авто:</b> {car}\n"
-                f" | <b>Колір:</b> {color}\n"
-                f" | <b>Номерний знак:</b> {number}\n\n"
+                f"🪪 Username: <b>@{username}</b>\n"
+                f"👤 Ім'я: <b>{fullname}</b>\n"
+                f"🆔 ID: <b>{tg_id}</b>\n"
+                f"🚘 Авто: <b>{car}</b>\n"
+                f"🎨 Колір: <b>{color}</b>\n"
+                f"🔢 Номерний знак: <b>{number}</b>\n\n"
             ]
             text += "\n\n".join(data_list)
         await message.answer(text, parse_mode="HTML")
