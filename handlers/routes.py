@@ -44,8 +44,22 @@ from zoneinfo import ZoneInfo
 from aiogram.fsm.state import State, StatesGroup
 from states import Register, RegisterDriver, AdminStates, Address, Complaints, Suggestions
 import asyncio
+import logging
 
 router = Router()
+
+@router.errors()
+async def error_handler(event, exception):
+    logging.error(f"Error: {exception}")
+    return True
+
+@router.message(F.text == "/restart")
+async def restart_bot(message: Message):
+    await message.answer("Бот перезапускається...")
+    exit()
+
+
+
 def split_text(text, limit=4000):
     chunks = []
     
@@ -139,7 +153,7 @@ async def start(message: Message):
             "<b>Замовляй авто</b>, або обери інший пункт який тебе ціквить.", parse_mode="HTML",
             reply_markup=get_order_some_keyboard() if user_id != ADMIN_ID else admin_id())
 
-@router.message(F.text == "Зареєструватися")
+@router.message(F.text == "Зареєструватися✈️")
 async def register_start(message: Message, state: FSMContext):
     if await user_exists(message.from_user.id):
         await message.answer(
@@ -269,7 +283,7 @@ async def get_address_write(message: Message, state: FSMContext):
                 (order_id,)
             )
             await db.commit()
-            await message.answer("Вибачте, наразі жодного водія немає❌")
+            await message.answer("Вибачте, наразі жодного водія немає❌", reply_markup=get_order_some_keyboard())
             return
     
     async with aiosqlite.connect(DB_USERS) as db:
@@ -332,7 +346,7 @@ async def location(message: Message, state: FSMContext):
                 "UPDATE orders SET status = 'canceled' WHERE id = ?",
                 (order_id,)
             )
-            await message.answer("Вибачте, наразі жодного водія немає❌")
+            await message.answer("Вибачте, наразі жодного водія немає❌", reply_markup=get_order_some_keyboard())
             await db.commit()
             return
     
@@ -372,7 +386,7 @@ async def address(message: Message):
         user_address = row[0] if row else None
     
     if not user_address:
-        await message.answer("❌ Вашої адреси в базі немає. Пройдіть реєстрацію ще раз.")
+        await message.answer("❌ Вашої адреси в базі немає. Пройдіть реєстрацію ще раз.", reply_markup=register_button())
         return
 
     timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
@@ -401,7 +415,7 @@ async def address(message: Message):
                 "UPDATE orders SET status = 'canceled' WHERE id = ?",
                 (order_id,)
             )
-            await message.answer("Вибачте, наразі жодного водія немає❌")
+            await message.answer("Вибачте, наразі жодного водія немає❌", reply_markup=get_order_some_keyboard())
             await db.commit()
             return
 
@@ -618,7 +632,7 @@ async def reject_order(callback: CallbackQuery):
 
             await callback.bot.send_message(chat_id=passenger_id,
                                             text="Нажаль, вільних водіїв зараз немає❌\nСпробуйте пізніше",
-                                            reply_markup=get_order_some_keyboard())
+                                            reply_markup=get_order_some_keyboard() if passenger_id != ADMIN_ID else admin_id())
             await callback.message.edit_text("Ви відхилили замовлення❌")
             await callback.answer()
             return
@@ -1265,3 +1279,8 @@ async def answer_cas(message: Message, state: FSMContext):
 
 
 
+@router.message()
+async def unknown(message: Message):
+    await message.answer(
+        "❗ Використовуйте кнопки меню."
+    )
