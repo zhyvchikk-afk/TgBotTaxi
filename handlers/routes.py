@@ -3,8 +3,7 @@ from aiogram.filters import Command
 import random
 from asyncio import sleep
 from config import DB_USERS, DB_PRICES, DB_ORDERS, DB_CAS
-from config import MY_COMPUTER, KRISTINA, EUGENE, KOSTYA_LIFE
-from config import ADMIN_ID, ADMIN_USERNAME
+from config import ADMIN_ID
 from aiogram.types import (
     Message,
     FSInputFile,

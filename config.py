@@ -11,9 +11,3 @@ DB_ORDERS = getenv("DB_ORDERS")
 DB_CAS = getenv("DB_CAS")
 
 ADMIN_ID = int(getenv("ADMIN_ID"))
-ADMIN_USERNAME = getenv("ADMIN_USERNAME")
-
-MY_COMPUTER = int(getenv("MY_COMPUTER"))
-KRISTINA = int(getenv("KRISTINA"))
-EUGENE = int(getenv("EUGENE"))
-KOSTYA_LIFE = int(getenv("KOSTYA_LIFE"))
