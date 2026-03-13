@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 import random
 from asyncio import sleep
-from config import DB_USERS, DB_PRICES, DB_ORDERS
+from config import DB_USERS, DB_PRICES, DB_ORDERS, DB_CAS
 from config import MY_COMPUTER, KRISTINA, EUGENE, KOSTYA_LIFE
 from config import ADMIN_ID, ADMIN_USERNAME
 from aiogram.types import (
@@ -24,6 +24,9 @@ from button import (
     admin_button,
     cancel_admin,
     admin_id,
+    complaints_and_suggestions_button,
+    done_order_button,
+    complaint_on_driver_btn,
 )
 from databases import (
     user_exists,
@@ -32,13 +35,14 @@ from databases import (
     init_db_prices,
     get_prices,
     get_user_address,
+    history_orders,
 )
 import json
 from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from aiogram.fsm.state import State, StatesGroup
-from states import Register, RegisterDriver, AdminStates, Address
+from states import Register, RegisterDriver, AdminStates, Address, Complaints, Suggestions
 import asyncio
 
 router = Router()
@@ -116,6 +120,9 @@ async def order_timeout(bot, order_id, driver_id):
         })()
 
         await reject_order(fake_callback)
+
+
+
 
 # --- Старт та реєстрація
 @router.message(Command("start"))
@@ -238,9 +245,17 @@ async def get_address_write(message: Message, state: FSMContext):
     created_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
 
     async with aiosqlite.connect(DB_ORDERS)as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM orders WHERE passenger_id = ?",
+            (message.from_user.id,)
+        )
+        row = await cursor.fetchone()
+        order_number = row[0] + 1
+
         cursor = await db.execute(""
-            "INSERT INTO orders (passenger_id, status, address, created_at, rejected_drivers)" \
-            "VALUES (?, ?, ?, ?, ?)", (message.from_user.id, "pending", address, created_at, json.dumps([]))
+            "INSERT INTO orders (passenger_order_number, passenger_id, status, address, created_at, rejected_drivers)" \
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (order_number, message.from_user.id, "pending", address, created_at, json.dumps([]))
         )
         await db.commit()
         order_id = cursor.lastrowid
@@ -296,9 +311,16 @@ async def location(message: Message, state: FSMContext):
 
     async with aiosqlite.connect(DB_ORDERS) as db:
         cursor = await db.execute(
-            "INSERT INTO orders (passenger_id, status, latitude, longitude, created_at, rejected_drivers)" \
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (message.from_user.id, "pending", shyryna, dovzhyna, created_at, json.dumps([]))
+            "SELECT COUNT(*) FROM orders WHERE passenger_id = ?",
+            (message.from_user.id,)
+        )
+        row = await cursor.fetchone()
+        order_number = row[0] + 1
+
+        cursor = await db.execute(
+            "INSERT INTO orders (passenger_order_number, passenger_id, status, latitude, longitude, created_at, rejected_drivers)" \
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (order_number, message.from_user.id, "pending", shyryna, dovzhyna, created_at, json.dumps([]))
         )
         await db.commit()
         order_id = cursor.lastrowid
@@ -358,9 +380,16 @@ async def address(message: Message):
 
     async with aiosqlite.connect(DB_ORDERS) as db:
         cursor = await db.execute(
-            "INSERT INTO orders (passenger_id, status, address, created_at, rejected_drivers)" \
-            "VALUES (?, ?, ?, ?, ?)",
-            (message.from_user.id, "pending", user_address, created_at, json.dumps([]))
+            "SELECT COUNT(*) FROM orders WHERE passenger_id = ?",
+            (message.from_user.id,)
+        )
+        row = await cursor.fetchone()
+        order_number = row[0] + 1
+
+        cursor = await db.execute(
+            "INSERT INTO orders (passenger_order_number, passenger_id, status, address, created_at, rejected_drivers)" \
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (order_number, message.from_user.id, "pending", user_address, created_at, json.dumps([]))
         )
         await db.commit()
         order_id = cursor.lastrowid
@@ -422,7 +451,7 @@ async def accept_order(callback: CallbackQuery):
     
         await db.execute(
             "UPDATE orders SET status = ?, driver_id = ? WHERE id = ?", 
-            ("accepted", driver_id, order_id)
+            ("in progress", driver_id, order_id)
         )
         await db.commit()
     
@@ -442,12 +471,114 @@ async def accept_order(callback: CallbackQuery):
     # --- Повідомлення пасажиру
     await callback.bot.send_message(chat_id=passenger_id,
                                     text=text_info, parse_mode="HTML",
-                                    reply_markup=get_order_some_keyboard())
+                                    reply_markup=complaint_on_driver_btn(order_id))
     
     # --- Повідомлення водію
-    await callback.message.edit_text(f"✅ Ви прийняли замовлення #{order_id}")
+    await callback.message.edit_text(f"✅ Ви прийняли замовлення #{order_id}", reply_markup=done_order_button(order_id))
     await callback.answer()
 
+# --- Скрга на водія
+@router.callback_query(F.data.startswith("complaint_"))
+async def complaint_on_driver(callback: CallbackQuery, state: FSMContext):
+    order_id = int(callback.data.split("_")[1])
+
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        cursor = await db.execute(
+            "SELECT status, driver_id FROM orders WHERE id = ?",
+            (order_id,)
+        )
+        row = await cursor.fetchone()
+    
+    driver_id = row[1]
+
+    if not row or row[0] != "in progress":
+        await callback.answer("Скаргу можна залишити тільки під час поїздки\nПерейдіть у розділ скарг та пропозицій та залиште скаргу там.", 
+                              show_alert=True)
+        return
+    
+    await state.update_data(order_id=order_id, driver_id=driver_id)
+
+    await callback.message.answer("Опишіть, що у Вас сталося:")
+
+    await state.set_state(Complaints.driver)
+    await callback.answer()
+
+@router.message(Complaints.driver)
+async def save_driver_complaint(message: Message, state: FSMContext):
+    data = await state.get_data()
+    order_id = data["order_id"]
+    driver_id = data["driver_id"]
+
+    text = message.text
+
+    timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    created_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
+
+    async with aiosqlite.connect(DB_CAS) as db:
+        await db.execute(
+            "INSERT INTO cas " \
+            "(passenger_id, name, text, category, driver_id, created_at) " \
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (message.from_user.id,
+             message.from_user.full_name,
+             text,
+             f"Скарга на водія (замовлення #{order_id})",
+             driver_id,
+             created_at
+             )
+        )
+        await db.commit()
+
+    await message.answer("✅ Скаргу на водія відправлено. Ми її розглянемо і повідомимо Вам про результат.")
+    await state.clear()
+
+
+
+
+
+
+
+# --- Завершення поїздки
+@router.callback_query(F.data.startswith("finish_"))
+async def finish_order(callback: CallbackQuery):
+    order_id = int(callback.data.split("_")[1])
+    driver_id = callback.from_user.id
+
+    timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    finished_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
+
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        cursor = await db.execute(
+            "SELECT passenger_id, status FROM orders WHERE id = ? AND driver_id = ?",
+            (order_id, driver_id)
+        )
+        order = await cursor.fetchone()
+
+        if not order:
+            await callback.message.edit_text("Замовлення не знйдено або Ви не його водій🚫")
+            await callback.answer()
+            return
+        
+        if order[1] != "in progress":
+            await callback.message.edit_text("Замовлення вже завершено, або ще не прийняте.")
+            await callback.answer()
+            return
+        
+        passenger_id = order[0]
+
+        await db.execute(
+            "UPDATE orders SET status = ?, finished_at = ? WHERE id = ?",
+            ("completed", finished_at, order_id)
+        )
+        await db.commit()
+
+    await callback.bot.send_message(chat_id = passenger_id,
+                                    text=f"✅ Поїздку завершено. Дякуємо, що обрали нас!")
+        
+    await callback.message.edit_text(
+        f"Ви закінчили поїздку✅", reply_markup=None
+    )
+    await callback.answer("Поїздку завершено!")
 
 # --- Відхилення замовлення водієм
 @router.callback_query(F.data.startswith("reject_"))
@@ -629,15 +760,21 @@ async def show_intercity_price(callback: CallbackQuery):
 
 @router.message(F.text == "Про нас ✌🏻")
 async def price(message: Message):
-    await message.answer("""
-        Привіт! Це Таксі-Сервіс!🚕\nМи вирішили не міняти назву, адже
-        ви знаєте нас саме за цим ім'ям...\n А ще, знаєте, бо ми найшвидші...
-        Бо найкомфортніші... І найпривітливіші😌...\nАле все ж ми змінилися!
-        Ви це можливо навіть і не помітите, але нам стало вільніше дихати!😋\n
-        А це значить ми стали ще швидшими, ще комфортнішими і ще привтливішими!🙂‍↕️
-        Замовляйте авто тут, або телефонуйте за номером телефону!\n<b>МИ З РАДІСТЮ
-        ДОСТАВИМО ВАС У БУДЬ-ЯКУ ТОЧКУ УКРАЇНИ!</b> 🫶🏻❤️
-                        """, parse_mode="HTML")
+    await message.answer(
+        f"Привіт! Це Таксі GO!🚕\nМи не чужі, не приїжджі, ба навіть більше, "
+        f"ви нас вже знаєте...\nА знаєте, бо ми найшвидші... "
+        f"Бо найкомфортніші... І найпривітливіші😌...\nАле все ж ми змінилися!\n"
+        f"Чому так впевнено? Бо до цього моменту, не було однієї компанії "
+        f"в якій працювали б найкращі водії, з любов'ю до свого авто та своєї справи\n"
+        f"А ми таких зібрали в нас\n"
+        f"Ви це можливо навіть і не помітите, але нам стало вільніше дихати!😋\n"
+        f"А це значить ми стали ще швидшими, ще комфортнішими і ще привітливішими!🙂‍↕️\n"
+        f"Скоро цей бот зможе ще більше ніж уміє зараз!\n"
+        f"Замовляйте авто тут, або телефонуйте за номером телефону!\n"
+        f"<a href='tel:+380730461929'>+380 73 046 1929</a>\n"       
+        f"<b>МИ З РАДІСТЮ"
+        f"ДОСТАВИМО ВАС У БУДЬ-ЯКУ ТОЧКУ УКРАЇНИ!</b> 🫶🏻❤️"
+        , parse_mode="HTML")
 
 # --- Функція виходу водія на лінію
 @router.message(F.text == "Працювати з нами🪙")
@@ -714,9 +851,126 @@ async def register_number(message: Message, state: FSMContext):
     )
 
 
+# --- Історія замовлень
+@router.message(F.text == "Історія замовлень📝")
+async def show_history_orders(message: Message):
+    text = await history_orders(message)
+    await message.answer(text, parse_mode="HTML")
+
+# --- Скарги та пропозиції
+@router.message(F.text == "Скарги та пропозиції✅")
+async def complaints_and_suggestions(message: Message):
+    await message.answer("Обирай👇🏻", reply_markup=complaints_and_suggestions_button())
+
+# --- Пропозиція
+@router.message(F.text == "Пропозиція/Відгук✅")
+async def suggestions(message: Message, state: FSMContext):
+    await message.answer("Нам є, що покращити?\nРозкажіть нам про свою пропозицію або залиште відгук!", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(Suggestions.suggestions)
+
+@router.message(Suggestions.suggestions)
+async def save_suggestions(message: Message, state: FSMContext):
+    suggestions=message.text
+
+    timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    created_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
+
+    async with aiosqlite.connect(DB_CAS) as db:
+        await db.execute(
+            "INSERT INTO cas (passenger_id, name, text, category, created_at)" \
+            "VALUES (?, ?, ?, ?, ?)",
+            (message.from_user.id, message.from_user.full_name, suggestions, "Пропозиція/Відгук", created_at)
+        )
+        await db.commit()
     
+    await message.answer("Вашу пропозицію/відгук збережено! Очікуйте на відповідь",
+                         reply_markup=get_order_some_keyboard() if message.from_user.id != ADMIN_ID else admin_id())
+    await state.clear()
+
+# --- Скарга
+@router.message(F.text == "Скарга❌")
+async def complaints(message: Message, state: FSMContext):
+    await message.answer("Опишіть ситуацію, що Вам не сподобалася. До 1000 символів")
+    await state.set_state(Complaints.complaints)
+
+@router.message(Complaints.complaints)
+async def save_complaints(message: Message, state: FSMContext):
+    complaints = message.text
+
+    if len(complaints) > 1000:
+        await message.answer("❌ Максимальна довжина скарги — 1000 символів")
+        return
+
+    timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    created_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
+
+    async with aiosqlite.connect(DB_CAS) as db:
+        await db.execute(
+            "INSERT INTO cas (passenger_id, name, text, category, created_at)" \
+            "VALUES (?, ?, ?, ?, ?)",
+            (message.from_user.id, message.from_user.full_name, complaints, "Скарга", created_at)
+        )
+        await db.commit()
+    await message.answer("Одразу після обробки скарги ми приймемо міри і повідомимо Вам про результат!",
+                         reply_markup=get_order_some_keyboard() if message.from_user.id != ADMIN_ID else admin_id())
+    await state.clear()
+
+    
+# --- Функція отримання особистої статистики водія
+@router.message(F.text == "Моя статистика📝")
+async def my_statistics(message: Message):
+    driver_id = message.from_user.id
+
+    timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    created_at = timeKyiv.strftime("%Y-%m-%d")
+
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM orders WHERE driver_id = ? AND status = ?",
+            (driver_id, "completed")
+        )
+        row = await cursor.fetchone()
+        total_orders = row[0] if row else 0
+
+        if not total_orders:
+            await message.answer("Поки ви не зробили жодного замовлення.")
+
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM orders WHERE driver_id = ? AND DATE(created_at) = ? AND status = ?",
+            (driver_id, created_at, "completed")
+        )
+        row = await cursor.fetchone()
+        today_orders = row[0] if row else 0
+
+    async with aiosqlite.connect(DB_CAS) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM cas WHERE driver_id = ?",
+            (driver_id,)
+        )
+        row = await cursor.fetchone()
+        count_cas = row[0] if row else 0
+
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM cas WHERE driver_id = ? AND answer IS NOT NULL",
+            (driver_id,)
+        )
+        row = await cursor.fetchone()
+        count_cas_answered = row[0] if row else 0
+
+    await message.answer(
+        f"🧮<b>Ваша статистика:</b> \n\n"
+        f"🚕Загальна кількість замовлень: {total_orders}\n"
+        f"📅Замовлень сьогодні: {today_orders}\n\n"
+        f"⚠️Всього скарг: {count_cas}\n"
+        f"✅Скарг вирішено: {count_cas_answered}\n", parse_mode="HTML"
+                         )
+
+
+
+
+
 # --- Функція зняття з лінії
-@router.message(F.text == "Зійти з лінії")
+@router.message(F.text == "Зійти з лінії❌")
 async def go_home(message: Message):
     user_id = message.from_user.id
     
@@ -772,7 +1026,7 @@ async def admin_panel(message: Message):
 
 
 # --- Додавання водія
-@router.message(F.text == 'Додати водія➕')
+@router.message(F.text == '➕Додати водія')
 async def add_driver_start(message: Message, state: FSMContext):
     await message.answer("Введіть id користувача:", reply_markup=cancel_admin())
     await state.set_state(AdminStates.add_driver)
@@ -810,7 +1064,7 @@ async def add_driver_process(message: Message, state: FSMContext):
 
 
 # --- Видалення водія
-@router.message(F.text == 'Видалити водія➖')
+@router.message(F.text == '➖Видалити водія')
 async def remove_driver_start(message: Message, state: FSMContext):
     await message.answer("Введіть id користувача:", reply_markup=cancel_admin())
     await state.set_state(AdminStates.remove_driver)
@@ -849,7 +1103,7 @@ async def remove_driver_process(message: Message, state: FSMContext):
 
 
 # --- Список водіїв
-@router.message(F.text == "Список водіїв")
+@router.message(F.text == "📋Список водіїв")
 async def list_drivers(message: Message):
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
@@ -877,7 +1131,7 @@ async def list_drivers(message: Message):
 
 
 # --- Список онлайн водіїв
-@router.message(F.text == "Водії на лінії")
+@router.message(F.text == "📝Водії на лінії")
 async def online_drivers(message: Message):
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
@@ -922,7 +1176,7 @@ async def get_statistics(date):
         total = (await cursor.fetchone())[0]
 
         cursor = await db.execute(
-            "SELECT COUNT(*) FROM orders WHERE DATE(created_at) = ? AND status = 'accepted'",
+            "SELECT COUNT(*) FROM orders WHERE DATE(created_at) = ? AND status = 'completed'",
             (date_str,)
         )
         completed = (await cursor.fetchone())[0]
@@ -956,6 +1210,57 @@ async def process_calendar(callback_query: CallbackQuery, callback_data: SimpleC
         stats = await get_statistics(date)
         await callback_query.message.answer(stats)
 
+
+# --- Обробка скарг та пропозицій
+@router.message(F.text == "⚠️✅Скарги та пропозиції")
+async def processing_cas(message: Message, state: FSMContext):
+    async with aiosqlite.connect(DB_CAS) as db:
+        cursor = await db.execute(
+            "SELECT id, passenger_id, name, text, category, created_at FROM cas WHERE answer IS NULL LIMIT 1"
+        )
+        row = await cursor.fetchone()
+
+    if not row:
+        await message.answer("Записів не знайдено! Вітаю!")
+        return
+
+    cas_id, passenger_id, name, text, category, created_at = row
+
+    user_text = (
+        f"<b>{category}</b> від <b>{name}:</b> \n\n"
+        f"{text} \n\n"
+        f"{created_at}\n"
+        f"ID коритувача: {passenger_id}\n"
+        f"ID скарги: {cas_id}\n\n"
+    )
+
+    await message.answer(user_text, parse_mode="HTML")
+    await state.update_data(cas_id=cas_id, passenger_id=passenger_id)
+    await state.set_state(Complaints.processing)
+
+@router.message(Complaints.processing)
+async def answer_cas(message: Message, state: FSMContext):
+    data = await state.get_data()
+    cas_id = data["cas_id"]
+    passenger_id = data["passenger_id"]
+
+    answer = message.text
+    
+    timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    created_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
+
+    async with aiosqlite.connect(DB_CAS) as db:
+        await db.execute("""
+            UPDATE cas
+            SET answer = ?, created_at_answer = ?
+            WHERE id = ?
+        """, (answer, created_at, cas_id))
+        await db.commit()
+
+    await message.bot.send_message(passenger_id,
+        f"📩Відповідь підтримки:\n\n{answer}")
+    await message.answer("Відповідь надіслано")
+    await state.clear()
 
 
 

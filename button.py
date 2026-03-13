@@ -9,7 +9,7 @@ from aiogram_calendar import SimpleCalendar
 def register_button():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Зареєструватися")]
+            [KeyboardButton(text="Зареєструватися✈️")]
         ],
         resize_keyboard=True
     )
@@ -29,7 +29,8 @@ def get_order_some_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Замовити таксі 🚕"), KeyboardButton(text="Тарифи 📋")],
-            [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")]
+            [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")],
+            [KeyboardButton(text="Історія замовлень📝"), KeyboardButton(text="Скарги та пропозиції✅")]
         ],
         resize_keyboard=True
     )
@@ -40,6 +41,7 @@ def admin_id():
         keyboard=[
             [KeyboardButton(text="Замовити таксі 🚕"), KeyboardButton(text="Тарифи 📋")],
             [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")],
+            [KeyboardButton(text="Історія замовлень📝"), KeyboardButton(text="Скарги та пропозиції✅")],
             [KeyboardButton(text="Адмін-панель🧮")]
         ],
         resize_keyboard=True
@@ -60,11 +62,21 @@ def location_button():
 def inline_way_button():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard = [
-            [InlineKeyboardButton(text="Місто", callback_data="city")],
-            [InlineKeyboardButton(text="Костянтинівка", callback_data="kostyantynivka")],
-            [InlineKeyboardButton(text="Передмістя", callback_data="suburbs")],
-            [InlineKeyboardButton(text="Більше 30км", callback_data="intercity")],
+            [InlineKeyboardButton(text="Місто🌆", callback_data="city")],
+            [InlineKeyboardButton(text="Костянтинівка🏡", callback_data="kostyantynivka")],
+            [InlineKeyboardButton(text="Передмістя🏭", callback_data="suburbs")],
+            [InlineKeyboardButton(text="Більше 30км🛣", callback_data="intercity")],
         ]
+    )
+    return keyboard
+
+def complaints_and_suggestions_button():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard = [
+            [KeyboardButton(text="Пропозиція/Відгук✅"), KeyboardButton(text="Скарга❌")],
+            [KeyboardButton(text="Повернутися до головного меню 🔙")]
+        ],
+        resize_keyboard=True
     )
     return keyboard
 
@@ -77,10 +89,27 @@ def accept_reject_button(order_id: int):
     )
     return keyboard
 
+def complaint_on_driver_btn(order_id: int):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Поскаржитися на водія⚠️", 
+                                  callback_data=f"complaint_{order_id}")]
+        ]
+    )
+    return keyboard
+
+def done_order_button(order_id: int):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Завершити поїздку ✅", callback_data=f"finish_{order_id}")]
+        ]
+    )
+    return keyboard
+
 def to_leave_line():
     keyboard = ReplyKeyboardMarkup(
         keyboard = [
-            [KeyboardButton(text="Зійти з лінії")]
+            [KeyboardButton(text="Моя статистика📝"), KeyboardButton(text="Зійти з лінії❌")]
         ],
         resize_keyboard=True
     )
@@ -89,12 +118,12 @@ def to_leave_line():
 def admin_button():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Додати водія➕"), 
-             KeyboardButton(text="Видалити водія➖")],
-            [KeyboardButton(text="Список водіїв"), 
-             KeyboardButton(text="Водії на лінії"),
+            [KeyboardButton(text="➕Додати водія"), 
+             KeyboardButton(text="➖Видалити водія")],
+            [KeyboardButton(text="📋Список водіїв"), 
+             KeyboardButton(text="📝Водії на лінії"),
              KeyboardButton(text="📊Статистика замовлень")],
-            [KeyboardButton(text="Повернутися до головного меню 🔙")]
+            [KeyboardButton(text="⚠️✅Скарги та пропозиції"), KeyboardButton(text="Повернутися до головного меню 🔙")]
         ],
         resize_keyboard=True
     )

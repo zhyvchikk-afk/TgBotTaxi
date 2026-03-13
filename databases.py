@@ -1,5 +1,5 @@
 import aiosqlite
-from config import DB_USERS, DB_PRICES, DB_ORDERS
+from config import DB_USERS, DB_PRICES, DB_ORDERS, DB_CAS
 from aiogram.types import Message
 import asyncio
 from prices import all_data
@@ -99,6 +99,7 @@ async def init_db_orders():
         await db.execute("""
             CREATE TABLE IF NOT EXISTS orders (
                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         passenger_order_number INTEGER,
                          passenger_id INTEGER NOT NULL,
                          driver_id INTEGER,
                          status TEXT NOT NULL,
@@ -106,7 +107,82 @@ async def init_db_orders():
                          longitude REAL,
                          address TEXT,
                          rejected_drivers TEXT DEFAULT '[]',
-                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                         finished_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                         )
+                        """)
+        await db.commit()
+
+    
+# --- Історія замовлень
+async def history_orders(message: Message):
+    passenger_id = message.from_user.id
+
+    async with aiosqlite.connect(DB_ORDERS) as db:
+        cursor = await db.execute("""
+            SELECT passenger_order_number, driver_id, status, address, created_at 
+            FROM orders 
+            WHERE passenger_id = ?
+            ORDER BY created_at DESC
+            LIMIT 10
+        """, (passenger_id,))
+
+        rows = await cursor.fetchall()
+
+    text = "📝Останні 10 замовлень:\n\n"
+    
+    for order in rows:
+        order_num, driver_id, status, address, created_at = order
+
+        if not address:
+            address = "Замовлення за локацією"
+
+        async with aiosqlite.connect(DB_USERS) as db:
+            cursor = await db.execute("""
+                SELECT full_name, car, color, number 
+                FROM users
+                WHERE telegram_id = ?""",
+                (driver_id,)
+            )
+            driver = await cursor.fetchone()
+
+        if driver:
+            driver_name, car, color, number = driver
+        else:
+            driver_name, car, color, number = "-", "-", "-", "-"
+
+        if status == "accepted":
+            status = "🟢Виконано"
+        else:
+            status = "🔴Відхилено"
+
+        text += (
+            f"<b>#{order_num}</b>\n"
+            f"👤Водій: <b>{driver_name}</b>\n"
+            f"🚘Авто: <b>{color} {car}</b>\n"
+            f"🔢Номерний знак: <b>{number}</b>\n"
+            f"📍Адреса: <b>{address}</b>\n"
+            f"📊Статус: <b>{status}</b>\n"
+            f"🕒<b>{created_at}</b>\n\n"
+        )
+
+    return text
+
+
+# --- Створення таблиці з відгуками та пропозиціями якщо такої немає
+async def init_complaints_and_suggestions():
+    async with aiosqlite.connect(DB_CAS) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS cas (
+                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         passenger_id INTEGER,
+                         driver_id INTEGER,
+                         name TEXT,
+                         text TEXT,
+                         category TEXT,
+                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                         answer TEXT,
+                         created_at_answer TIMESTAMP DEFAULT NULL
                          )
                         """)
         await db.commit()

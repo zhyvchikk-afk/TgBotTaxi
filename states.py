@@ -15,3 +15,12 @@ class AdminStates(StatesGroup):
 
 class Address(StatesGroup):
     address = State()
+
+class Complaints(StatesGroup):
+    complaints = State()
+    driver = State()
+    processing = State()
+
+class Suggestions(StatesGroup):
+    suggestions = State()
+    processing = State()
