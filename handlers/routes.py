@@ -181,7 +181,7 @@ async def get_age(message: Message, state: FSMContext):
 @router.message(Register.address, F.text)
 async def get_address(message: Message, state: FSMContext):
     await state.update_data(address=str(message.text))
-    await message.answer("Поділіться Вашим номеом телефону:", reply_markup=send_phone())
+    await message.answer("Поділіться Вашим номером телефону:", reply_markup=send_phone())
     await state.set_state(Register.phone)
 
 @router.message(Register.phone, F.contact)    
@@ -871,7 +871,7 @@ async def show_history_orders(message: Message):
     await message.answer(text, parse_mode="HTML")
 
 # --- Скарги та пропозиції
-@router.message(F.text == "Скарги та пропозиції✅")
+@router.message(F.text == "Пропозиції та скарги✅")
 async def complaints_and_suggestions(message: Message):
     await message.answer("Обирай👇🏻", reply_markup=complaints_and_suggestions_button())
 

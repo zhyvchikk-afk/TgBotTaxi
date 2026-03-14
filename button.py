@@ -30,7 +30,7 @@ def get_order_some_keyboard():
         keyboard=[
             [KeyboardButton(text="Замовити таксі 🚕"), KeyboardButton(text="Тарифи 📋")],
             [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")],
-            [KeyboardButton(text="Історія замовлень📝"), KeyboardButton(text="Скарги та пропозиції✅")]
+            [KeyboardButton(text="Історія замовлень📝"), KeyboardButton(text="Пропозиції та скарги✅")]
         ],
         resize_keyboard=True
     )
@@ -41,7 +41,7 @@ def admin_id():
         keyboard=[
             [KeyboardButton(text="Замовити таксі 🚕"), KeyboardButton(text="Тарифи 📋")],
             [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")],
-            [KeyboardButton(text="Історія замовлень📝"), KeyboardButton(text="Скарги та пропозиції✅")],
+            [KeyboardButton(text="Історія замовлень📝"), KeyboardButton(text="Пропозиції та скарги✅")],
             [KeyboardButton(text="Адмін-панель🧮")]
         ],
         resize_keyboard=True
