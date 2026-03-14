@@ -1276,11 +1276,25 @@ async def answer_cas(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.message(Command("getdb"), F.from_user.id == ADMIN_ID)
+
+ALLOWED_DBS = {
+    "users": "/data/users.sql",
+    "orders": "/data/orders.sql",
+    "prices": "/data/prices.sql",
+    "cas": "/data/cas.sql",
+}
+
+@router.message(F.text.startswith("/getdb_"), F.from_user.id == ADMIN_ID)
 async def send_db(message: Message):
+
     try:
-        # Вказуємо шлях до бази на диску Railway (/data)
-        db_file = FSInputFile("/data/users.sql") 
+        name_db = message.text.split("_")[1]
+        
+        if name_db not in ALLOWED_DBS:
+            await message.answer("❌ Невідома база")
+            return
+        
+        db_file = FSInputFile(ALLOWED_DBS[name_db]) 
         
         await message.answer_document(
             db_file, 
