@@ -1276,6 +1276,19 @@ async def answer_cas(message: Message, state: FSMContext):
     await state.clear()
 
 
+@router.message(Command("getdb"), F.from_user.id == ADMIN_ID)
+async def send_db(message: Message):
+    try:
+        # Вказуємо шлях до бази на диску Railway (/data)
+        db_file = FSInputFile("/data/users.sql") 
+        
+        await message.answer_document(
+            db_file, 
+            caption=f"📂 <b>Актуальна база даних</b>\n👤 Користувач: @{message.from_user.username}",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await message.answer(f"❌ Помилка при отриманні файлу: {e}")
 
 
 @router.message()
