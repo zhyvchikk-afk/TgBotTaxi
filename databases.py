@@ -151,7 +151,7 @@ async def history_orders(message: Message):
         else:
             driver_name, car, color, number = "-", "-", "-", "-"
 
-        if status == "accepted":
+        if status == "completed":
             status = "🟢Виконано"
         else:
             status = "🔴Відхилено"

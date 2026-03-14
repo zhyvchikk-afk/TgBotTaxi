@@ -143,7 +143,7 @@ async def start(message: Message):
     user_id = message.from_user.id
     if not await user_exists(message.from_user.id):
         await message.answer(
-        "Привіт! Я Бот для замовлення таксі в місті Южнукраїнськ і не тільки!\n" \
+        "Привіт! Я Бот для замовлення таксі в місті Південнокраїнськ і не тільки!\n" \
         "Спершу зареєструємо тебе!", parse_mode="HTML",
         reply_markup=register_button())
         return
