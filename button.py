@@ -106,6 +106,15 @@ def done_order_button(order_id: int):
     )
     return keyboard
 
+def rating_driver(order_id: int, driver_id: int):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=str(i), callback_data=f"rate:{i}:{order_id}:{driver_id}")
+             for i in range (1, 6)]
+        ]
+    )
+    return keyboard
+
 def to_leave_line():
     keyboard = ReplyKeyboardMarkup(
         keyboard = [

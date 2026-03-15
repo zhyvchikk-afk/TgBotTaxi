@@ -26,6 +26,7 @@ from button import (
     complaints_and_suggestions_button,
     done_order_button,
     complaint_on_driver_btn,
+    rating_driver,
 )
 from databases import (
     user_exists,
@@ -545,12 +546,6 @@ async def save_driver_complaint(message: Message, state: FSMContext):
     await message.answer("✅ Скаргу на водія відправлено. Ми її розглянемо і повідомимо Вам про результат.")
     await state.clear()
 
-
-
-
-
-
-
 # --- Завершення поїздки
 @router.callback_query(F.data.startswith("finish_"))
 async def finish_order(callback: CallbackQuery):
@@ -586,12 +581,47 @@ async def finish_order(callback: CallbackQuery):
         await db.commit()
 
     await callback.bot.send_message(chat_id = passenger_id,
-                                    text=f"✅ Поїздку завершено. Дякуємо, що обрали нас!")
+                                    text=(
+                                        f"✅ Поїздку завершено. Дякуємо, що обрали нас!\n"
+                                        f"Залиште будь ласка оцінку водію!⭐️\n"
+                                        ),
+                                    reply_markup=rating_driver(order_id, driver_id))
         
     await callback.message.edit_text(
         f"Ви закінчили поїздку✅", reply_markup=None
     )
     await callback.answer("Поїздку завершено!")
+
+# --- Ловимо оцінку від пасажира
+@router.callback_query(F.data.startswith("rate:"))
+async def handle_rating(callback: CallbackQuery):
+    data = callback.data.split(":")
+    rating = int(data[1])
+    order_id = int(data[2])
+    driver_id = int(data[3])
+
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT rating, count_rating FROM users WHERE telegram_id = ?",
+            (driver_id,)
+        )
+        row = await cursor.fetchone()
+
+        if row:
+            old_rating = row[0] if row[0] is not None else 0.0
+            count = row[1] if row[1] is not None else 0
+
+            new_count = count + 1
+            new_rating = round((old_rating * count + rating)/new_count, 1)
+
+            await db.execute(
+                "UPDATE users SET rating = ?, count_rating = ? WHERE telegram_id = ?",
+                (new_rating, new_count, driver_id)
+            )
+            await db.commit()
+    
+            await callback.message.edit_text(f"Дякуємо! Ваша оцінка: {rating}⭐️. Новий рейтинг водія: {new_rating}")
+    await callback.answer()
 
 # --- Відхилення замовлення водієм
 @router.callback_query(F.data.startswith("reject_"))
@@ -970,10 +1000,22 @@ async def my_statistics(message: Message):
         row = await cursor.fetchone()
         count_cas_answered = row[0] if row else 0
 
+    async with aiosqlite.connect(DB_USERS) as db:
+        cursor = await db.execute(
+            "SELECT rating, count_rating FROM users WHERE driver_id = ?",
+            (driver_id,)
+        )
+        row = await cursor.fetchone()
+
+        if row:
+            rating, count_rating = row
+
     await message.answer(
         f"🧮<b>Ваша статистика:</b> \n\n"
         f"🚕Загальна кількість замовлень: {total_orders}\n"
         f"📅Замовлень сьогодні: {today_orders}\n\n"
+        f"⭐️Рейтинг: {rating}\n"
+        f"🔢Кількість оцінок: {count_rating}\n\n"
         f"⚠️Всього скарг: {count_cas}\n"
         f"✅Скарг вирішено: {count_cas_answered}\n", parse_mode="HTML"
                          )
@@ -1120,7 +1162,7 @@ async def remove_driver_process(message: Message, state: FSMContext):
 async def list_drivers(message: Message):
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
-            "SELECT telegram_id, username, full_name, car, color, number FROM users WHERE role = 'driver'",
+            "SELECT telegram_id, username, full_name, car, color, number, rating FROM users WHERE role = 'driver'",
         )
         result = await cursor.fetchall()
 
@@ -1129,7 +1171,7 @@ async def list_drivers(message: Message):
             return
         
         text = f"<b>Усі водії компанії:</b>\n\n"
-        for tg_id, username, fullname, car, color, number in result:
+        for tg_id, username, fullname, car, color, number, rating in result:
             data_list = [
                 f"🪪 Username: <b>@{username}</b>\n"
                 f"👤 Ім'я: <b>{fullname}</b>\n"
@@ -1137,6 +1179,7 @@ async def list_drivers(message: Message):
                 f"🚘 Авто: <b>{car}</b>\n"
                 f"🎨 Колір: <b>{color}</b>\n"
                 f"🔢 Номерний знак: <b>{number}</b>\n\n"
+                f"⭐️ Рейтинг: <b>{rating}</b>\n\n"
             ]
             text += "\n\n".join(data_list)
         await message.answer(text, parse_mode="HTML")
@@ -1148,7 +1191,7 @@ async def list_drivers(message: Message):
 async def online_drivers(message: Message):
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
-            "SELECT telegram_id, username, full_name, car, color, number FROM users WHERE role = 'driver' AND is_online = 1",
+            "SELECT telegram_id, username, full_name, car, color, number, rating FROM users WHERE role = 'driver' AND is_online = 1",
         )
         result = await cursor.fetchall()
 
@@ -1157,7 +1200,7 @@ async def online_drivers(message: Message):
             return
         
         text = f"<b>Водії на лінії:</b>\n\n"
-        for tg_id, username, fullname, car, color, number in result:
+        for tg_id, username, fullname, car, color, number, rating in result:
             data_list = [
                 f"🪪 Username: <b>@{username}</b>\n"
                 f"👤 Ім'я: <b>{fullname}</b>\n"
@@ -1165,6 +1208,7 @@ async def online_drivers(message: Message):
                 f"🚘 Авто: <b>{car}</b>\n"
                 f"🎨 Колір: <b>{color}</b>\n"
                 f"🔢 Номерний знак: <b>{number}</b>\n\n"
+                f"⭐️ Рейтинг: <b>{rating}</b>\n\n"
             ]
             text += "\n\n".join(data_list)
         await message.answer(text, parse_mode="HTML")
@@ -1200,7 +1244,49 @@ async def get_statistics(date):
         )
         canceled = (await cursor.fetchone())[0]
 
-    date_str = date.strftime("%Y-%m-%d")
+    async with aiosqlite.connect(DB_CAS) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM cas"
+        )
+        total_cas = (await cursor.fetchone())[0]
+        
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM cas WHERE DATE(created_at) = ? AND category = 'Скарга'",
+            (date_str,)
+        )
+        today_complients = (await cursor.fetchone())[0]
+        
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM cas WHERE DATE(created_at) = ? AND category LIKE '%Скарга на водія%'",
+            (date_str,)
+        )
+        today_complients_on_driver = (await cursor.fetchone())[0]
+        
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM cas WHERE DATE(created_at) = ? AND category = 'Пропозиція/Відгук'",
+            (date_str,)
+        )
+        today_suggestions = (await cursor.fetchone())[0]
+        
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM cas WHERE answer IS NOT NULL"
+        )
+        answer_cas = (await cursor.fetchone())[0]
+        
+    async with aiosqlite.connect(DB_USERS) as db:
+        
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM users"
+        )
+        all_users = (await cursor.fetchone())[0]
+        
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM users WHERE DATE(created_at) = ?",
+            (date_str,)
+        )
+        today_users = (await cursor.fetchone())[0]
+    
+
     day = date_str.split("-")[2].strip()
     mounth = date_str.split("-")[1].strip()
     year = date_str.split("-")[0].strip()
@@ -1211,7 +1297,14 @@ async def get_statistics(date):
         f"📊Статистика за {my_date}\n\n"
         f"🚖Замовлень: {total}\n"
         f"✅Прийнято: {completed}\n"
-        f"❌Відхилено: {canceled}\n"
+        f"❌Відхилено: {canceled}\n\n"
+        f"Всього користувачів: {all_users}\n"
+        f"Нових користувачів: {today_users}\n\n"
+        f"Всього записів: {total_cas}\n"
+        f"Пропозицій та відгуків: {today_suggestions}\n"
+        f"Скарг(не на водіїв): {today_complients}\n"
+        f"Скарг на водіїв: {today_complients_on_driver}\n"
+        f"Вирішено питань: {answer_cas}\n"
     )
 
 
@@ -1303,6 +1396,9 @@ async def send_db(message: Message):
         )
     except Exception as e:
         await message.answer(f"❌ Помилка при отриманні файлу: {e}")
+
+
+
 
 
 @router.message()

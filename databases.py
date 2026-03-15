@@ -3,6 +3,8 @@ from config import DB_USERS, DB_PRICES, DB_ORDERS, DB_CAS
 from aiogram.types import Message
 import asyncio
 from prices import all_data
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 
@@ -22,7 +24,10 @@ async def init_db():
                          phone TEXT,
                          car TEXT,
                          color TEXT,
-                         number TEXT
+                         number TEXT,
+                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                         rating REAL DEFAULT 5.0,
+                         count_rating INTEGER DEFAULT 0
                          )
                         """)
         await db.commit()
@@ -36,17 +41,22 @@ async def user_exists(telegram_id: int):
         return user is not None
 
 async def add_user(message: Message, age: int, address: str, phone: str):
+
+    timeKyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    created_at = timeKyiv.strftime("%Y-%m-%d %H:%M:%S")
+
     async with aiosqlite.connect(DB_USERS) as db:
         await db.execute("""INSERT INTO users 
-            (telegram_id, username, full_name, age, address, phone)
-            VALUES (?, ?, ?, ?, ?, ?)""",
+            (telegram_id, username, full_name, age, address, phone, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 message.from_user.id,
                 message.from_user.username,
                 message.from_user.full_name,
                 age,
                 address,
-                phone
+                phone,
+                created_at
             )
         )
         await db.commit()
