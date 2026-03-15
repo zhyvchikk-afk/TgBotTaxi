@@ -1002,7 +1002,7 @@ async def my_statistics(message: Message):
 
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
-            "SELECT rating, count_rating FROM users WHERE driver_id = ?",
+            "SELECT rating, count_rating FROM users WHERE telegram_id = ?",
             (driver_id,)
         )
         row = await cursor.fetchone()
@@ -1011,15 +1011,16 @@ async def my_statistics(message: Message):
             rating = row[0] if row[0] is not None else 0.0
             count_rating = row[1] if row[1] is not None else 0
 
-    await message.answer(
-        f"🧮<b>Ваша статистика:</b> \n\n"
-        f"🚕Загальна кількість замовлень: {total_orders}\n"
-        f"📅Замовлень сьогодні: {today_orders}\n\n"
-        f"⭐️Рейтинг: {rating}\n"
-        f"🔢Кількість оцінок: {count_rating}\n\n"
-        f"⚠️Всього скарг: {count_cas}\n"
-        f"✅Скарг вирішено: {count_cas_answered}\n", parse_mode="HTML"
-                         )
+        stars = "⭐" * int(rating)
+        await message.answer(
+            f"🧮<b>Ваша статистика:</b> \n\n"
+            f"🚕Загальна кількість замовлень: {total_orders}\n"
+            f"📅Замовлень сьогодні: {today_orders}\n\n"
+            f"⭐️Рейтинг: {rating} {stars}\n"
+            f"🔢Кількість оцінок: {count_rating}\n\n"
+            f"⚠️Всього скарг: {count_cas}\n"
+            f"✅Скарг вирішено: {count_cas_answered}\n", parse_mode="HTML"
+                            )
 
 
 
