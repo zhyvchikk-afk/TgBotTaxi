@@ -1399,6 +1399,15 @@ async def send_db(message: Message):
     except Exception as e:
         await message.answer(f"❌ Помилка при отриманні файлу: {e}")
 
+@router.message(F.document, F.from_user.id == ADMIN_ID)
+async def upload_db(message: Message):
+    if message.document.file_name.endswith(".sql") or message.document.file_name.endswith(".db"):
+        file_id = message.document.file_id
+        file = await message.bot.get_file(file_id)
+        # Сохраняем файл прямо на подключенный диск Volume
+        destination = f"/data/{message.document.file_name}"
+        await message.bot.download_file(file.file_path, destination)
+        await message.answer(f"✅ Файл {message.document.file_name} успешно загружен в /data/")
 
 
 
