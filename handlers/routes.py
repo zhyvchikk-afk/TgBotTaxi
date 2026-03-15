@@ -1008,7 +1008,8 @@ async def my_statistics(message: Message):
         row = await cursor.fetchone()
 
         if row:
-            rating, count_rating = row
+            rating = row[0] if row[0] is not None else 0.0
+            count_rating = row[1] if row[1] is not None else 0
 
     await message.answer(
         f"🧮<b>Ваша статистика:</b> \n\n"
