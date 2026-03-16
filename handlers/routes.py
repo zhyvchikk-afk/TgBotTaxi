@@ -567,23 +567,23 @@ async def finish_order(callback: CallbackQuery):
             await callback.answer()
             return
         
-        if order[1] != "in progress":
+        passenger_id, status = order[0], order[1]
+        
+        if status != "in progress":
             await callback.message.edit_text("Замовлення вже завершено, або ще не прийняте.")
             await callback.answer()
             return
         
-        passenger_id = order[0]
-
         cursor = await db.execute(
-            "SELECT passenger_order_number FROM orders WHERE id = ? AND driver_id = ? AND status = ?",
-            (order_id, driver_id, "completed")
+            "SELECT COUNT(*) FROM orders WHERE passenger_id = ? AND status = 'completed'",
+            (passenger_id,)
         )
         row = await cursor.fetchone()
-        passenger_order_number = row[0]
+        passenger_order_number = (row[0] if row else 0) + 1
 
         await db.execute(
-            "UPDATE orders SET status = ?, finished_at = ? WHERE id = ?",
-            ("completed", finished_at, order_id)
+            "UPDATE orders SET status = ?, finished_at = ?, passenger_order_number = ? WHERE id = ?",
+            ("completed", finished_at, passenger_order_number, order_id)
         )
         await db.commit()
 
@@ -591,8 +591,8 @@ async def finish_order(callback: CallbackQuery):
                                     text=(
                                         f"✅ Поїздку завершено. Дякуємо, що обрали нас!\n"
                                         f"Залиште будь ласка оцінку водію!⭐️\n"
-                                        f"Це Ваша {passenger_order_number} поїздка з нами!⛳️\n"
-                                        ),
+                                        f"Це Ваша <b>{passenger_order_number}</b> поїздка з нами!⛳️\n"
+                                        ), parse_mode="HTML",
                                     reply_markup=rating_driver(order_id, driver_id))
         
     await callback.message.edit_text(
