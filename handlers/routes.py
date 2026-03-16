@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 import random
 from asyncio import sleep
-from config import DB_USERS, DB_PRICES, DB_ORDERS, DB_CAS
+from config import DB_USERS, DB_PRICES, DB_ORDERS, DB_CAS, DB_COUNTORDERS
 from config import ADMIN_ID
 from aiogram.types import (
     Message,
@@ -557,7 +557,7 @@ async def finish_order(callback: CallbackQuery):
 
     async with aiosqlite.connect(DB_ORDERS) as db:
         cursor = await db.execute(
-            "SELECT passenger_id, status FROM orders WHERE id = ? AND driver_id = ?",
+            "SELECT passenger_id, status, passenger_order_number FROM orders WHERE id = ? AND driver_id = ?",
             (order_id, driver_id)
         )
         order = await cursor.fetchone()
@@ -573,6 +573,7 @@ async def finish_order(callback: CallbackQuery):
             return
         
         passenger_id = order[0]
+        passenger_order_number = order[2]
 
         await db.execute(
             "UPDATE orders SET status = ?, finished_at = ? WHERE id = ?",
@@ -584,6 +585,7 @@ async def finish_order(callback: CallbackQuery):
                                     text=(
                                         f"✅ Поїздку завершено. Дякуємо, що обрали нас!\n"
                                         f"Залиште будь ласка оцінку водію!⭐️\n"
+                                        f"Це Ваша {passenger_order_number} поїздка з нами!⛳️\n"
                                         ),
                                     reply_markup=rating_driver(order_id, driver_id))
         

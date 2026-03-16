@@ -1,5 +1,5 @@
 import aiosqlite
-from config import DB_USERS, DB_PRICES, DB_ORDERS, DB_CAS
+from config import DB_USERS, DB_PRICES, DB_ORDERS, DB_CAS, DB_COUNTORDERS
 from aiogram.types import Message
 import asyncio
 from prices import all_data
@@ -193,6 +193,20 @@ async def init_complaints_and_suggestions():
                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                          answer TEXT,
                          created_at_answer TIMESTAMP DEFAULT NULL
+                         )
+                        """)
+        await db.commit()
+
+# --- Створення таблиці з кількістю замовлень якщо такої немає
+async def init_count_orders():
+    async with aiosqlite.connect(DB_COUNTORDERS) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS countorders (
+                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         passenger_id INTEGER,
+                         username TEXT,
+                         name TEXT,
+                         count INTEGER,
                          )
                         """)
         await db.commit()
