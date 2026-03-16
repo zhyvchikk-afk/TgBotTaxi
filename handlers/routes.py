@@ -557,7 +557,7 @@ async def finish_order(callback: CallbackQuery):
 
     async with aiosqlite.connect(DB_ORDERS) as db:
         cursor = await db.execute(
-            "SELECT passenger_id, status, passenger_order_number FROM orders WHERE id = ? AND driver_id = ?",
+            "SELECT passenger_id, status FROM orders WHERE id = ? AND driver_id = ?",
             (order_id, driver_id)
         )
         order = await cursor.fetchone()
@@ -573,7 +573,13 @@ async def finish_order(callback: CallbackQuery):
             return
         
         passenger_id = order[0]
-        passenger_order_number = order[2]
+
+        cursor = await db.execute(
+            "SELECT passenger_order_number FROM orders WHERE id = ? AND driver_id = ? AND status = ?",
+            (order_id, driver_id, "completed")
+        )
+        row = await cursor.fetchone()
+        passenger_order_number = row[0]
 
         await db.execute(
             "UPDATE orders SET status = ?, finished_at = ? WHERE id = ?",

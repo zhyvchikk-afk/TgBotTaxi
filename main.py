@@ -10,7 +10,6 @@ from databases import (
     init_db, init_db_prices, 
     init_db_orders, 
     init_complaints_and_suggestions,
-    init_count_orders,
 )
 from utils.health import health_check
 from utils.backup import backup_db
