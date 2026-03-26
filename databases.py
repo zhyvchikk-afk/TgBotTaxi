@@ -27,7 +27,7 @@ async def init_db():
                          number TEXT,
                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                          rating REAL DEFAULT 5.0,
-                         count_rating INTEGER DEFAULT 0
+                         count_rating INTEGER DEFAULT 20
                          )
                         """)
         await db.commit()
