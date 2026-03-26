@@ -16,7 +16,7 @@ async def init_db():
                          id INTEGER PRIMARY KEY AUTOINCREMENT,
                          role TEXT DEFAULT "passenger",
                          is_online INTEGER DEFAULT 0,
-                         telegram_id INTEGER UNIQUE,
+                         telegram_id INTEGER,
                          username TEXT,
                          full_name TEXT,
                          age INTEGER,
