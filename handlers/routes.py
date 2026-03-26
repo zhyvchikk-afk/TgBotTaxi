@@ -471,14 +471,14 @@ async def accept_order(callback: CallbackQuery):
     
     async with aiosqlite.connect(DB_USERS) as db:
         cursor = await db.execute(
-            "SELECT full_name, phone, car, color, number FROM users WHERE telegram_id = ?",
+            "SELECT full_name, car, color, number FROM users WHERE telegram_id = ?",
             (driver_id,)
         )
         row = await cursor.fetchone()
-        full_name, phone, car, color, number = row
+        full_name, car, color, number = row
     text_info = (
         f"👤 Водій <b>{full_name}</b> прийняв Ваше замовлення!\n"
-        f"📱 Телефон: <a href='tel:{phone}'>{phone}</a>\n"
+        # f"📱 Телефон: <a href='tel:{phone}'>{phone}</a>\n"
         f"🚕 Автомобіль: <b>{color} {car}</b>\n"
         f"🔢 Номерний знак: <b>{number}</b>\n"
     )
@@ -1212,7 +1212,7 @@ async def online_drivers(message: Message):
         text = f"<b>Водії на лінії:</b>\n\n"
         for tg_id, username, fullname, car, color, number, rating in result:
             data_list = [
-                f"🪪 Username: <b>@{username}</b>\n"
+                f"🪪 Username: <b>{f'@{username}' if username else fullname}</b>\n"
                 f"👤 Ім'я: <b>{fullname}</b>\n"
                 f"🆔 ID: <b>{tg_id}</b>\n"
                 f"🚘 Авто: <b>{car}</b>\n"
