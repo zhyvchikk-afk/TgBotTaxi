@@ -19,6 +19,7 @@ from button import (
     inline_way_button,
     location_button,
     to_leave_line,
+    to_leave_line_admin,
     accept_reject_button,
     admin_button,
     cancel_admin,
@@ -863,7 +864,7 @@ async def go_work(message: Message, state: FSMContext):
         await message.answer(f"Гарних пасажирів та вдалого заробітку!😌\n\n"
                                 f"Ваше авто: <b>{color} {car}\n</b>"
                                 f"Номерний знак: <b>{number}</b>", parse_mode="HTML",
-                                reply_markup=to_leave_line() if user_id != ADMIN_ID else to_leave_line())
+                                reply_markup=to_leave_line() if user_id != ADMIN_ID else to_leave_line_admin())
         
 @router.message(RegisterDriver.car)
 async def register_car(message: Message, state: FSMContext):

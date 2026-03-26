@@ -124,6 +124,16 @@ def to_leave_line():
     )
     return keyboard
 
+def to_leave_line_admin():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard = [
+            [KeyboardButton(text="Моя статистика📝"), KeyboardButton(text="Зійти з лінії❌")]
+            [KeyboardButton(text="Повернутися до головного меню 🔙")]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
+
 def admin_button():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
