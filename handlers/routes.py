@@ -855,7 +855,7 @@ async def go_work(message: Message, state: FSMContext):
             return
 
         if is_online != 0:
-            await message.answer("Ви і так на лінії✅ ", reply_markup=to_leave_line() if user_id != ADMIN_ID else to_leave_line())
+            await message.answer("Ви і так на лінії✅ ", reply_markup=to_leave_line() if user_id != ADMIN_ID else to_leave_line_admin())
             return
 
         await db.execute("UPDATE users SET is_online = 1 WHERE telegram_id = ?",
