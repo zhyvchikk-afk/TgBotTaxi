@@ -236,7 +236,7 @@ async def order(message: Message):
         row = await cursor.fetchone()
         is_online = row[0] if row else None
     
-    if is_online != 0:
+    if is_online != 0 and user_id != ADMIN_ID:
         await message.answer("Ви не можете замовити машину, якщо знаходитесь на лінії!")
         return
 
