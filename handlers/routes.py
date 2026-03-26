@@ -888,7 +888,7 @@ async def register_number(message: Message, state: FSMContext):
 
     async with aiosqlite.connect(DB_USERS) as db:
         await db.execute(
-            "UPDATE users SET car = ?, color = ?, number = ?, is_online = 1 WHERE telegram_id = ?",
+            "UPDATE users SET car = ?, color = ?, number = ?, is_online = 1, count_rating = 20 WHERE telegram_id = ?",
             (car, color, number, message.from_user.id)
         )
         await db.commit()
