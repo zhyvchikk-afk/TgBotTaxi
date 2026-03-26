@@ -1182,10 +1182,8 @@ async def list_drivers(message: Message):
         
         text = f"<b>Усі водії компанії:</b>\n\n"
         for tg_id, username, fullname, car, color, number, rating in result:
-            if username == None:
-                username = fullname
             data_list = [
-                f"🪪 Username: <b>@{username}</b>\n"
+                f"🪪 Username: <b>@{username if username else fullname}</b>\n"
                 f"👤 Ім'я: <b>{fullname}</b>\n"
                 f"🆔 ID: <b>{tg_id}</b>\n"
                 f"🚘 Авто: <b>{car}</b>\n"
