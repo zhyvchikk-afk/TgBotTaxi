@@ -1182,7 +1182,7 @@ async def list_drivers(message: Message):
         
         text = f"<b>Усі водії компанії:</b>\n\n"
         for tg_id, username, fullname, car, color, number, rating in result:
-            if username = None:
+            if username == None:
                 username = fullname
             data_list = [
                 f"🪪 Username: <b>@{username}</b>\n"
