@@ -1410,6 +1410,8 @@ async def send_db(message: Message):
 
 @router.message(F.document, F.from_user.id == ADMIN_ID)
 async def upload_db(message: Message):
+    print("🔥 UPLOAD HANDLER CALLED")
+    print("FILE:", message.document.file_name)
     if message.document.file_name.endswith(".sql") or message.document.file_name.endswith(".db"):
         file_id = message.document.file_id
         file = await message.bot.get_file(file_id)
