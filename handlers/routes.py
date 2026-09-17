@@ -1408,19 +1408,69 @@ async def send_db(message: Message):
     except Exception as e:
         await message.answer(f"❌ Помилка при отриманні файлу: {e}")
 
+# @router.message(F.document, F.from_user.id == ADMIN_ID)
+# async def upload_db(message: Message):
+#     print("🔥 UPLOAD HANDLER CALLED")
+#     print("FILE:", message.document.file_name)
+#     if message.document.file_name.endswith(".sql") or message.document.file_name.endswith(".db"):
+#         file_id = message.document.file_id
+#         file = await message.bot.get_file(file_id)
+#         # Сохраняем файл прямо на подключенный диск Volume
+#         destination = f"/data/{message.document.file_name}"
+#         await message.bot.download_file(file.file_path, destination)
+#         await message.answer(f"✅ Файл {message.document.file_name} успешно загружен в /data/")
+
 @router.message(F.document, F.from_user.id == ADMIN_ID)
 async def upload_db(message: Message):
-    print("🔥 UPLOAD HANDLER CALLED")
-    print("FILE:", message.document.file_name)
-    if message.document.file_name.endswith(".sql") or message.document.file_name.endswith(".db"):
-        file_id = message.document.file_id
-        file = await message.bot.get_file(file_id)
-        # Сохраняем файл прямо на подключенный диск Volume
-        destination = f"/data/{message.document.file_name}"
-        await message.bot.download_file(file.file_path, destination)
-        await message.answer(f"✅ Файл {message.document.file_name} успешно загружен в /data/")
+    try:
+        filename = message.document.file_name
 
+        print("🔥 UPLOAD HANDLER CALLED")
+        print("FILE:", filename)
 
+        if not filename.lower().endswith((".sql", ".db")):
+            print("❌ WRONG EXTENSION")
+            await message.answer("❌ Підтримуються тільки .sql та .db")
+            return
+
+        print("1️⃣ Getting Telegram file...")
+
+        file = await message.bot.get_file(
+            message.document.file_id
+        )
+
+        print("2️⃣ GOT FILE")
+        print("Telegram file_path:", file.file_path)
+
+        destination = f"/data/{filename}"
+
+        print("3️⃣ Destination:", destination)
+        print("4️⃣ Starting download...")
+
+        await message.bot.download_file(
+            file.file_path,
+            destination
+        )
+
+        print("5️⃣ DOWNLOAD FINISHED")
+
+        import os
+
+        print("6️⃣ EXISTS:", os.path.exists(destination))
+
+        if os.path.exists(destination):
+            print("7️⃣ SIZE:", os.path.getsize(destination))
+
+        await message.answer(
+            f"✅ Файл {filename} успішно збережено в /data/"
+        )
+
+    except Exception as e:
+        print("❌ UPLOAD ERROR:", repr(e))
+
+        await message.answer(
+            f"❌ Помилка: {type(e).__name__}: {e}"
+        )
 
 
 @router.message()
