@@ -30,7 +30,8 @@ def get_order_some_keyboard():
         keyboard=[
             [KeyboardButton(text="Замовити таксі 🚕"), KeyboardButton(text="Тарифи 📋")],
             [KeyboardButton(text="Про нас ✌🏻"), KeyboardButton(text="Працювати з нами🪙")],
-            [KeyboardButton(text="Історія замовлень📝"), KeyboardButton(text="Пропозиції та скарги✅")]
+            [KeyboardButton(text="Історія замовлень📝"), KeyboardButton(text="Пропозиції та скарги✅")],
+            [KeyboardButton(text='Отримати свій 🆔')]
         ],
         resize_keyboard=True
     )
