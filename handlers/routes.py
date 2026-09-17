@@ -1231,9 +1231,9 @@ async def online_drivers(message: Message):
 async def get_id(message: Message):
     user_id = message.from_user.id
     await message.answer(
-        f'Цей 🆔 потрібен для реєстрації в базі водіїв.\n'
-        f'<b>{user_id}</b>\n'
-        f'Покажіть цей 🆔 адміністратору, для того\n'
+        f'Покажіть цей 🆔: '
+        f'<b>{user_id}</b> '
+        f'адміністратору, для того\n'
         f'аби ми могли додати Вас до бази водіїв\n\n'
         f'🆔 не є секретним значенням вашого аккаунту телеграм.\n'
         f'Це лише номерний ідентфікатор акаунта.\n'
